@@ -3,7 +3,7 @@ from fastapi import APIRouter, Header
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List
-
+from app.services.tz import to_utc, utc_now, IST
 from app.db.mongo import purchase_events
 from app.models.purchases import InvoiceLine
 from app.services.product_resolver import fetch_product_by_sku
@@ -15,6 +15,24 @@ def _to_float(x: str | None) -> float:
     if x is None or x == "":
         return 0.0
     return float(Decimal(x))
+
+def _parse_order_dt(s: str) -> datetime:
+    """
+    Accepts 'YYYY-MM-DD' or ISO strings.
+    - If it's date-only or naive, assume IST calendar/time, then convert to UTC.
+    - Always return UTC-aware datetime.
+    """
+    try:
+        if "T" in s:
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=IST)
+        else:
+            # Date-only -> interpret as midnight IST of that calendar day
+            dt = datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=IST)
+        return to_utc(dt)
+    except Exception:
+        return utc_now()
 
 @router.post("/v1/webhooks/pos")
 async def pos_webhook(lines: List[InvoiceLine], x_signature: str | None = Header(default=None)):
@@ -36,8 +54,7 @@ async def pos_webhook(lines: List[InvoiceLine], x_signature: str | None = Header
         doc = {
             "orderNo": line.Order_No,
             "lineNo": line.Line_No,
-            "orderDate": datetime.fromisoformat(line.OrderDt).replace(tzinfo=timezone.utc) \
-                         if "T" not in line.OrderDt else datetime.fromisoformat(line.OrderDt),
+            "orderDate": _parse_order_dt(line.OrderDt),
             "storeCode": line.StoreCode.upper(),
             "sku": line.Item_Code,
             "qty": qty,
@@ -50,7 +67,7 @@ async def pos_webhook(lines: List[InvoiceLine], x_signature: str | None = Header
             "productSnapshot": None,
             "ingestion": {
                 "source": "webhook",
-                "ingestedAt": datetime.now(timezone.utc),
+                "ingestedAt": utc_now(),
                 "signatureValid": True if x_signature else None
             }
         }
