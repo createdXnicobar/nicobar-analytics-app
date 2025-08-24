@@ -1,5 +1,10 @@
 from pymongo import MongoClient
-client = MongoClient("mongodb://localhost:27017")
+import os
+from dotenv import load_dotenv
+from app.core.config import settings
+
+load_dotenv()
+client = MongoClient(settings.MONGODB_URI)
 db = client["nicobar-analytics-db"]
 stores = [
   {"_id":"BIN","storeCode":"BIN","storeName":"Indiranagar","city":"Bengaluru","state":"Karnataka","region":"South","timezone":"Asia/Kolkata","active":True},
