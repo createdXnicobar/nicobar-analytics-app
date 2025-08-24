@@ -1,4 +1,4 @@
-# setup_nicobar_analytics_db.py
+# setup_nicobar_analytics_db.py - this file is used to setup the DB on a mongoDB atlas server
 import os
 from datetime import datetime
 from pymongo import MongoClient, ASCENDING, DESCENDING

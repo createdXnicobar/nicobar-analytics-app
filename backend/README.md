@@ -38,7 +38,13 @@ pip install -r requirements.txt
 > Create a file backend/.env
 
 ```bash
-MONGODB_URI=mongodb+srv://<db_user>:<db_pw>@cluster0.dhudqnb.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+APP_NAME=nicobar-analytics
+MONGO_USER=<db_user>
+MONGO_PW=<db_pw>
+MONGODB_URI=mongodb+srv://${MONGO_USER}:${MONGO_PW}@cluster0.dhudqnb.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+DB_NAME=nicobar-analytics-db
+NICOBAR_API_BASE=https://bronco.nicobar.com
+ENV=dev
 ```
 
 ## 3) Run the backend API
