@@ -250,8 +250,8 @@ def main():
             "bsonType": "object",
             "required": ["date", "storeCode", "sku", "trials", "purchases", "conversion"],
             "properties": {
-                # date stored as "YYYY-MM-DD" string (use a date only if you prefer)
-                "date": {"bsonType": "string"},
+                # date stored as BSON date type for consistency and type safety
+                "date": {"bsonType": "date"},
                 "storeCode": {"bsonType": "string"},
                 "sku": {"bsonType": "string"},
                 "size": {"bsonType": ["string", "null"]},
