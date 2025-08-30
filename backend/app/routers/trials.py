@@ -15,7 +15,7 @@ async def create_trial(body: TrialIn, idem_key: str = Header(..., alias="X-Idemp
     ts_utc = to_utc(body.timestamp) if body.timestamp else utc_now()
     snap = await fetch_product_by_sku(body.sku)
     doc = {
-        "trialId": body.trialId,
+        # "trialId": body.trialId,
         "timestamp": ts_utc,
         "storeCode": body.storeCode.upper(),
         "sku": body.sku,
@@ -23,7 +23,9 @@ async def create_trial(body: TrialIn, idem_key: str = Header(..., alias="X-Idemp
         "sessionId": body.sessionId,
         "idemKey": idem_key,
         "productSnapshot": None,
-        "enrichment": {"status": "pending", "lastTriedAt": ts_utc}
+        "enrichment": {"status": "pending", "lastTriedAt": ts_utc},
+        "scannedBy": body.scannedBy,
+        "bundleId": body.bundleId
     }
     if snap:
         stock_here = (snap.stockByLocation or {}).get(doc["storeCode"])
