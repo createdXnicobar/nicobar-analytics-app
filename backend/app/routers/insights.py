@@ -1,5 +1,4 @@
 # app/routers/insights.py
-from tracemalloc import start
 from fastapi import APIRouter, Query, HTTPException
 from datetime import datetime, timedelta, timezone
 from app.db.mongo import insights_daily

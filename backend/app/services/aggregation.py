@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from statistics import median
 from collections import Counter, defaultdict
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from backend.app.services.timeutil import ist_day_bounds
+from app.services.timeutil import ist_day_bounds
 
 async def build_insights_for_date(db: AsyncIOMotorDatabase, date_str: str):
     start_utc, end_utc = ist_day_bounds(date_str)

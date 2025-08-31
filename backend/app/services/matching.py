@@ -2,11 +2,11 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from backend.app.services.timeutil import ist_day_bounds
+from app.services.timeutil import ist_day_bounds
 import logging
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
 
 async def link_trials_to_purchases_for_date(
     db: AsyncIOMotorDatabase,
@@ -17,7 +17,7 @@ async def link_trials_to_purchases_for_date(
     start_utc, end_utc = ist_day_bounds(date_str)
 
     purchases_cur = db.purchase_events.find({"orderDate": {"$gte": start_utc, "$lt": end_utc}})
-    logger.info(await purchases_cur.to_list())
+    # logger.info(await purchases_cur.to_list())
     count_linked = 0
 
     async for p in purchases_cur:
@@ -38,7 +38,7 @@ async def link_trials_to_purchases_for_date(
             "timestamp": {"$lte": purchase_ts, "$gte": window_start}
         }).sort("timestamp", -1).limit(5)
 
-        logger.info("Candidate trials for purchase:",await candidates.to_list())
+        # logger.info("Candidate trials for purchase:",await candidates.to_list())
         best = None
         async for t in candidates:
             # ensure trial not already linked to some other purchase

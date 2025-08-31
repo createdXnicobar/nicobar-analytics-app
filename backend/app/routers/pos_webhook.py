@@ -3,7 +3,7 @@ from fastapi import APIRouter, Header, Query
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List
-from backend.app.services.timeutil import to_utc, utc_now, IST
+from app.services.timeutil import to_utc, utc_now, IST
 from app.db.mongo import purchase_events
 from app.models.purchases import InvoiceLine
 from app.services.product_resolver import fetch_product_by_sku

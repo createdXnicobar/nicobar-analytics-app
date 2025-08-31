@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from app.models.trials import TrialIn, TrialAck
 from app.db.mongo import trial_events
 from app.services.product_resolver import fetch_product_by_sku
-from backend.app.services.timeutil import to_utc, utc_now
+from app.services.timeutil import to_utc, utc_now
 
 router = APIRouter()
 
