@@ -16,7 +16,7 @@ import {
 import { CameraView, Camera } from "expo-camera";
 
 // Backend base URL (ngrok)
-const BACKEND_BASE_URL = "https://9b1b85fde9d5.ngrok-free.app"; // change as needed
+const BACKEND_BASE_URL = "https://9346bbd8718c.ngrok-free.app"; // change as needed
 const BACKEND_POST_PATH = "/v1/trials"; // updated to match backend router
 
 // Configure your store code here (e.g., "AON", "BIN", ...)
@@ -175,6 +175,14 @@ export default function Index() {
 
   const generateId = () => `trial_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 
+  const generateUUID = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
   const deriveSku = async (scannedCode: string): Promise<string> => {
     try {
       // First, check if it's already a direct URL with SKU parameter
@@ -217,7 +225,7 @@ export default function Index() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Idempotency-Key": "test-trail-21",
+          "X-Idempotency-Key": generateUUID(),
         },
         body: JSON.stringify(body),
       });
