@@ -78,13 +78,115 @@ curl -i -X POST "http://localhost:8000/v1/trials" \
 * Re-running with the same X-Idempotency-Key → 409 Conflict (idempotency)
 
 #### POS Webhook
+Query Parameter : time in either of the two formats HH:MM:SS (IST) or ISO time
+If the first format is provided, date will be picked up from the request's JSON body
 ```bash
-curl -i -X POST "http://localhost:8000/v1/webhooks/pos" \
+curl -i -X POST "http://localhost:8000/v1/webhooks/pos?timestamp=14:30:00" \
   -H "Content-Type: application/json" \
   --data-binary @scripts/sample_invoice.json
 ```
+For the sample json file refer to > backend/scripts/sample_invoice.json
 * First run → {"created":4,"skipped_duplicates":0}
 * Running again with the same file → {"created":0,"skipped_duplicates":4}
+
+#### Admin Endpoints
+There are two admin endpoints which currently need to be triggered manually each day - the /match and /aggregate endpoints. Both help in generation of analytics data and save daily analytics to the DB. These will run as scheduled jobs automatically triggered each day at a later stage.
+```bash
+curl -i -X POST "http://localhost:8000/v1/jobs/match?date=2025-09-02" 
+
+Response Body:
+{
+  "linked": 1
+}
+```
+```bash
+curl -i -X POST "http://localhost:8000/v1/jobs/aggregate?date=2025-09-02"
+
+Response Body:
+{
+  "upserts": 3
+}
+```
+
+#### Analytics Endpoint
+This is the analytics endpoint which provides real analytics data
+```bash
+curl -i -X GET "http://localhost:8000/v1/insights/store/{storeCode}?date=2025-09-02&days=7"
+
+Response Body:
+{
+  "storeCode": "MBN",
+  "fromDate": "2025-08-27",
+  "toDate": "2025-09-02",
+  "totals": {
+    "trials": 3,
+    "purchases": 4,
+    "conversion": 1.3333333333333333
+  },
+  "topTryNotBuy": [
+    {
+      "sku": "NBI00036",
+      "title": null,
+      "size": null,
+      "color": null,
+      "trials": 1,
+      "purchases": 0,
+      "tryNotBuy": 1,
+      "conversion": 0
+    },
+    {
+      "sku": "NBI00034",
+      "title": null,
+      "size": null,
+      "color": null,
+      "trials": 1,
+      "purchases": 0,
+      "tryNotBuy": 1,
+      "conversion": 0
+    },
+    {
+      "sku": "NBI000589",
+      "title": null,
+      "size": "M",
+      "color": "Charcoal",
+      "trials": 1,
+      "purchases": 1,
+      "tryNotBuy": 0,
+      "conversion": 1
+    },
+    {
+      "sku": "NBI000385",
+      "title": null,
+      "size": "L",
+      "color": "Soft Grey",
+      "trials": 0,
+      "purchases": 1,
+      "tryNotBuy": -1,
+      "conversion": 0
+    },
+    {
+      "sku": "NBI000384",
+      "title": null,
+      "size": "M",
+      "color": "Soft Grey",
+      "trials": 0,
+      "purchases": 1,
+      "tryNotBuy": -1,
+      "conversion": 0
+    },
+    {
+      "sku": "456",
+      "title": null,
+      "size": null,
+      "color": null,
+      "trials": 0,
+      "purchases": 1,
+      "tryNotBuy": -1,
+      "conversion": 0
+    }
+  ]
+}
+```
 
 ## 5) Troubleshooting
 1. 422 Unprocessable Entity posting a JSON file
