@@ -1,4 +1,4 @@
-# app/services/tz.py
+# app/services/timeutil.py
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -26,3 +26,9 @@ def ist_day_bounds(date_str: str) -> tuple[datetime, datetime]:
 def to_ist_string(dt_utc: datetime) -> str:
     """Format a UTC datetime as 'YYYY-MM-DD HH:MM:SS' in IST, for responses/logs."""
     return dt_utc.astimezone(IST).strftime("%Y-%m-%d %H:%M:%S")
+
+def day_bounds_utc(d: datetime):
+    d_utc = d.astimezone(timezone.utc)
+    start = datetime(d_utc.year, d_utc.month, d_utc.day, tzinfo=timezone.utc)
+    end = start + timedelta(days=1)
+    return start, end
