@@ -1,5 +1,5 @@
 # app/routers/pos_webhook.py
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Query
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List
@@ -16,26 +16,45 @@ def _to_float(x: str | None) -> float:
         return 0.0
     return float(Decimal(x))
 
-def _parse_order_dt(s: str) -> datetime:
+def _parse_order_dt(order_dt: str, timestamp: str | None = None) -> datetime:
     """
-    Accepts 'YYYY-MM-DD' or ISO strings.
-    - If it's date-only or naive, assume IST calendar/time, then convert to UTC.
+    Accepts 'YYYY-MM-DD' for order date and optional timestamp.
+    - If timestamp is provided, use it as the actual purchase time
+    - If timestamp is missing, fall back to order date (midnight IST)
     - Always return UTC-aware datetime.
     """
     try:
-        if "T" in s:
-            dt = datetime.fromisoformat(s)
+        # If we have a timestamp, prioritize it
+        if timestamp:
+            if "T" in timestamp:
+                dt = datetime.fromisoformat(timestamp)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=IST)
+            else:
+                # If timestamp is just time (HH:MM:SS), combine with order date
+                order_date = datetime.strptime(order_dt, "%Y-%m-%d")
+                time_part = datetime.strptime(timestamp, "%H:%M:%S").time()
+                dt = datetime.combine(order_date.date(), time_part).replace(tzinfo=IST)
+            return to_utc(dt)
+        
+        # Fall back to order date logic (existing behavior)
+        if "T" in order_dt:
+            dt = datetime.fromisoformat(order_dt)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=IST)
         else:
             # Date-only -> interpret as midnight IST of that calendar day
-            dt = datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=IST)
+            dt = datetime.strptime(order_dt, "%Y-%m-%d").replace(tzinfo=IST)
         return to_utc(dt)
     except Exception:
         return utc_now()
 
 @router.post("/v1/webhooks/pos")
-async def pos_webhook(lines: List[InvoiceLine], x_signature: str | None = Header(default=None)):
+async def pos_webhook(
+    lines: List[InvoiceLine], 
+    x_signature: str | None = Header(default=None),
+    timestamp: str | None = Query(default=None, description="Purchase timestamp in HH:MM:SS format or ISO format")
+):
     # (optional) verify x_signature here
     created, skipped = 0, 0
 
@@ -54,7 +73,7 @@ async def pos_webhook(lines: List[InvoiceLine], x_signature: str | None = Header
         doc = {
             "orderNo": line.Order_No,
             "lineNo": line.Line_No,
-            "orderDate": _parse_order_dt(line.OrderDt),
+            "orderDate": _parse_order_dt(line.OrderDt, timestamp),
             "storeCode": line.StoreCode.upper(),
             "sku": line.Item_Code,
             "qty": qty,
