@@ -12,6 +12,7 @@ import {
   ScrollView,
 } from "react-native";
 import { CameraView, Camera } from "expo-camera";
+import uuid from 'react-native-uuid';
 
 // Backend base URL (ngrok)
 const BACKEND_BASE_URL = "https://9346bbd8718c.ngrok-free.app"; // change as needed
@@ -173,14 +174,6 @@ export default function Index() {
 
   const generateId = () => `trial_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 
-  const generateUUID = () => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c == 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  };
-
   const deriveSku = async (scannedCode: string): Promise<string> => {
     try {
       // First, check if it's already a direct URL with SKU parameter
@@ -223,7 +216,7 @@ export default function Index() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Idempotency-Key": generateUUID(),
+          "X-Idempotency-Key": uuid.v4(),
         },
         body: JSON.stringify(body),
       });
