@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useClerk } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 
@@ -7,7 +8,7 @@ export default function Account() {
   const router = useRouter();
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Account</Text>
 
       <View style={styles.card}>
@@ -26,7 +27,7 @@ export default function Account() {
       <TouchableOpacity style={styles.logout} onPress={async () => { await signOut(); router.replace('/(auth)/sign-in'); }}>
         <Text style={{ color: '#fff', fontWeight: '700' }}>Log out</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 

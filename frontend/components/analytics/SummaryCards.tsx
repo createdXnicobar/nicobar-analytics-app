@@ -16,19 +16,19 @@ export default function SummaryCards({ totals }: SummaryCardsProps) {
     <View style={styles.container}>
       {/* Total Trials Card */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Total Trial Scans</Text>
+        <Text style={styles.cardTitle} numberOfLines={2}>Total Trial Scans</Text>
         <Text style={styles.cardNumber}>{totals.trials}</Text>
       </View>
 
       {/* Items Sold Card */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Items Sold</Text>
+        <Text style={styles.cardTitle} numberOfLines={2}>Items Sold</Text>
         <Text style={styles.cardNumber}>{totals.purchases}</Text>
       </View>
 
       {/* Conversion Rate Card */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Conversion Rate</Text>
+        <Text style={styles.cardTitle} numberOfLines={2}>Conversion Rate</Text>
         <Text style={styles.cardNumber}>{conversionRate}%</Text>
       </View>
     </View>
@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 8,
     paddingHorizontal: 8,
   },
   card: {
@@ -56,10 +56,12 @@ const styles = StyleSheet.create({
     elevation: 3, // for Android shadow
   },
   cardTitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
     marginBottom: 8,
     fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   cardNumber: {
     fontSize: 20,

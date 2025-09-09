@@ -11,13 +11,14 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform } from "react-native";
 import { CameraView, Camera } from "expo-camera";
 import uuid from 'react-native-uuid';
 import { useBundle } from '../../context/BundleContext';
+import { useIsFocused } from "@react-navigation/native";
 
 // Backend base URL
-// Prefer EXPO_PUBLIC_API_BASE_URL; otherwise pick sensible localhost fallbacks per platform
 const BACKEND_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
   (Platform.OS === "android"
@@ -94,9 +95,11 @@ export default function Index() {
   const [sending, setSending] = useState(false);
   const [canScan, setCanScan] = useState(true);
   const [countdown, setCountdown] = useState(0);
-  const [cameraKey, setCameraKey] = useState(0); // FIX: Key to reset camera
+  const [cameraKey, setCameraKey] = useState(0); 
   const lastScanned = useRef<string | null>(null);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
 
   // Modal state and product data
   const [modalVisible, setModalVisible] = useState(false);
@@ -108,7 +111,7 @@ export default function Index() {
   const [currentBasketId, setCurrentBasketId] = useState<string | null>(null);
   const { addBasket } = useBundle();
 
-  // FIX: Reset camera when component mounts/unmounts
+  
   useEffect(() => {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
@@ -230,7 +233,7 @@ export default function Index() {
     }
   };
 
-  // FIXED: Use the existing /v1/trials endpoint
+  // Use the existing /v1/trials endpoint
   const submitToBackend = async (productData: ProductPayload) => {
     try {
       setSending(true);
@@ -242,7 +245,7 @@ export default function Index() {
         sku,
         storeCode: DEFAULT_STORE_CODE,
         feedback: productData.feedback,
-        scannedBy: "app-user", // required by backend
+        scannedBy: "app-user", 
         bundleId: currentBasketId || undefined
       };
 
@@ -265,7 +268,7 @@ export default function Index() {
       
       Alert.alert("Submitted", "Trial stored successfully with feedback.");
       setModalVisible(false);
-      // setCountdown(2); // Commented: we want instant re-scan
+      // re-scan
       setCanScan(true);
       lastScanned.current = null;
       setCameraKey(prev => prev + 1);
@@ -325,13 +328,13 @@ export default function Index() {
     }
   };
 
-  // FIX: Reset camera when closing modal
+  
   const handleModalClose = () => {
     setModalVisible(false);
     setCanScan(true);
     setSelectedFeedbacks([]);
     lastScanned.current = null;
-    setCameraKey(prev => prev + 1); // Reset camera by changing key
+    setCameraKey(prev => prev + 1); 
   };
 
   const BasketStatus = () => {
@@ -357,25 +360,27 @@ export default function Index() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: Math.max(30, insets.top) }] }>
       <Text style={styles.title}>Scan QR / Barcode</Text>
       <Text style={styles.subtitle}>Point camera at QR code - scans automatically</Text>
       
       <BasketStatus />
       
       <View style={styles.scanner}>
-        {/* FIX: Add key to reset camera */}
-        <CameraView
-          key={cameraKey}
-          style={StyleSheet.absoluteFillObject}
-          barcodeScannerSettings={{
-            barcodeTypes: [
-              "qr", "pdf417", "aztec", "ean13", "ean8", "upc_a", 
-              "upc_e", "code39", "code93", "code128", "codabar", "itf14",
-            ],
-          }}
-          onBarcodeScanned={canScan ? handleScan : undefined}
-        />
+        {/* Mount camera only when tab is focused to ensure immediate start */}
+        {isFocused && (
+          <CameraView
+            key={cameraKey}
+            style={StyleSheet.absoluteFillObject}
+            barcodeScannerSettings={{
+              barcodeTypes: [
+                "qr", "pdf417", "aztec", "ean13", "ean8", "upc_a", 
+                "upc_e", "code39", "code93", "code128", "codabar", "itf14",
+              ],
+            }}
+            onBarcodeScanned={isFocused && canScan ? handleScan : undefined}
+          />
+        )}
         
         <View style={styles.overlay}>
           <View style={styles.scanFrame} />
@@ -506,7 +511,7 @@ export default function Index() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 

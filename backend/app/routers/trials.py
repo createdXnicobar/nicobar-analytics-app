@@ -42,4 +42,3 @@ async def create_trial(body: TrialIn, idem_key: str = Header(..., alias="X-Idemp
 
     await trial_events().insert_one(doc)
     return TrialAck(storedAt=ts_utc)
-

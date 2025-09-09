@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState } from 'react';
 import useAnalytics from '../../hooks/useAnalytics'; 
 import SummaryCards from '../../components/analytics/SummaryCards';
@@ -38,26 +39,27 @@ export default function AnalyticsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
+      <SafeAreaView style={styles.centerContainer}>
         <Text style={styles.loadingText}>Loading analytics data...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centerContainer}>
+      <SafeAreaView style={styles.centerContainer}>
         <Text style={styles.errorText}>Error: {error}</Text>
         <TouchableOpacity onPress={refetch} style={styles.retryButton}>
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
   // Handle empty data case
   if (!data || data.totals.trials === 0) {
     return (
+      <SafeAreaView style={{ flex: 1 }}>
       <ScrollView style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -89,10 +91,12 @@ export default function AnalyticsScreen() {
           currentRange={dateRange}
         />
       </ScrollView>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={{ flex: 1 }}>
     <ScrollView 
       style={styles.container}
       refreshControl={
@@ -129,6 +133,7 @@ export default function AnalyticsScreen() {
         currentRange={dateRange}
       />
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -142,7 +147,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
-    padding: 20,
+    padding: 5,
   },
   loadingText: {
     fontSize: 16,

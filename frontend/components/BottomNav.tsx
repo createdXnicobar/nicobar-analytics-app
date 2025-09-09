@@ -2,12 +2,14 @@ import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Text, Platform } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const NAV_BG = '#fff';
+const NAV_BG = '#f7f7f7';
 const ACTIVE = '#111827';
-const INACTIVE = '#8b8b8b';
+const INACTIVE = '#9aa0a6';
 
 export default function BottomNav({ state, descriptors, navigation }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
   const go = (name: string) => navigation.navigate(name as never);
 
   const isActive = (routeName: string) => {
@@ -16,15 +18,21 @@ export default function BottomNav({ state, descriptors, navigation }: BottomTabB
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[
+      styles.container,
+      {
+        paddingBottom: Math.max(12, insets.bottom + 8),
+        marginBottom: Math.max(2, insets.bottom ? 4 : 8),
+      }
+    ]}>
       <TouchableOpacity style={styles.item} onPress={() => go('home')}>
         <IconSymbol size={24} name="house.fill" color={isActive('home') ? ACTIVE : INACTIVE} />
         <Text style={[styles.label, { color: isActive('home') ? ACTIVE : INACTIVE }]}>Home</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.item} onPress={() => go('reports')}>
-        <IconSymbol size={24} name="chart.bar.fill" color={isActive('reports') ? ACTIVE : INACTIVE} />
-        <Text style={[styles.label, { color: isActive('reports') ? ACTIVE : INACTIVE }]}>Reports</Text>
+      <TouchableOpacity style={styles.item} onPress={() => go('Insights')}>
+        <IconSymbol size={24} name="chart.bar.fill" color={isActive('Insights') ? ACTIVE : INACTIVE} />
+        <Text style={[styles.label, { color: isActive('Insights') ? ACTIVE : INACTIVE }]}>Insights</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.scanButton} onPress={() => go('scan')}>
@@ -52,10 +60,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingTop: 10,
-    paddingBottom: Platform.select({ ios: 24, default: 14 }),
     backgroundColor: NAV_BG,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopWidth: 0,
+    marginHorizontal: 12,
+    borderRadius: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
   item: {
     flex: 1,
@@ -74,11 +87,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#0b1533',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -24,
+    marginTop: -30,
     shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
   },
 });

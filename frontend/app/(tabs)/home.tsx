@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useClerk } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { useBundle } from '../../context/BundleContext'; // Context hook
@@ -14,7 +15,6 @@ export default function Home() {
   const filtered = useMemo(() => {
     const now = new Date();
     const start = new Date(now);
-    // Start from beginning of the day to include all of "Today"
     start.setHours(0, 0, 0, 0);
     start.setDate(start.getDate() - (days - 1));
     return bundles.filter(b => new Date(b.createdAt) >= start);
@@ -29,7 +29,7 @@ export default function Home() {
   const renderHeader = () => (
     <View style={styles.header}>
       <Text style={styles.title}>Nicobar Retail</Text>
-      <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
+      <Image source={require('@/assets/images/nico_logo.png')} style={styles.logo} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={styles.sectionTitle}>Your Baskets</Text>
         <TouchableOpacity style={styles.filterChip} onPress={() => setShowFilter(true)}>
@@ -90,7 +90,7 @@ type Bundle = {
   );
 
   return (
-    <>
+    <SafeAreaView style={{ flex: 1 }}>
     <FlatList
       data={filtered}
       keyExtractor={(item) => item.id}
@@ -114,7 +114,7 @@ type Bundle = {
         </View>
       </View>
     </Modal>
-    </>
+    </SafeAreaView>
   );
 }
 

@@ -1,4 +1,6 @@
-import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Platform } from 'react-native';
+import { useState } from 'react';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface DateFilterProps {
   visible: boolean;
@@ -13,7 +15,12 @@ export default function DateFilter({
   onDateRangeSelect, 
   currentRange 
 }: DateFilterProps) {
-  
+  const [showCustom, setShowCustom] = useState(false);
+  const [startDate, setStartDate] = useState<Date>(new Date());
+  const [endDate, setEndDate] = useState<Date>(new Date());
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+
   const dateOptions = [
     { label: 'Today', days: 1 },
     { label: 'Last 7 days', days: 7 },
@@ -24,6 +31,21 @@ export default function DateFilter({
   const handleSelect = (days: number) => {
     const today = new Date().toISOString().split('T')[0];
     onDateRangeSelect({ date: today, days });
+  };
+
+  const applyCustom = () => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    // Ensure start <= end
+    if (start > end) {
+      const tmp = new Date(start);
+      setStartDate(end);
+      setEndDate(tmp);
+    }
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const diffDays = Math.max(1, Math.floor((end.setHours(23,59,59,999) - start.setHours(0,0,0,0)) / msPerDay) + 1);
+    const endStr = new Date(endDate).toISOString().split('T')[0];
+    onDateRangeSelect({ date: endStr, days: diffDays });
   };
 
   return (
@@ -55,6 +77,52 @@ export default function DateFilter({
                 </Text>
               </TouchableOpacity>
             ))}
+
+            <TouchableOpacity
+              style={[styles.option, showCustom && styles.selectedOption]}
+              onPress={() => setShowCustom(!showCustom)}
+            >
+              <Text style={[styles.optionText, showCustom && styles.selectedText]}>Custom range…</Text>
+            </TouchableOpacity>
+
+            {showCustom && (
+              <View style={styles.customContainer}>
+                <View style={styles.customRow}>
+                  <TouchableOpacity style={styles.pill} onPress={() => setShowStartPicker(true)}>
+                    <Text style={styles.pillText}>Start: {startDate.toISOString().split('T')[0]}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.pill} onPress={() => setShowEndPicker(true)}>
+                    <Text style={styles.pillText}>End: {endDate.toISOString().split('T')[0]}</Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity style={styles.applyBtn} onPress={applyCustom}>
+                  <Text style={styles.applyBtnText}>Apply</Text>
+                </TouchableOpacity>
+
+                {(showStartPicker || showEndPicker) && (
+                  <View style={{ marginTop: 8 }}>
+                    {showStartPicker && (
+                      <DateTimePicker
+                        value={startDate}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                        onChange={(e, d) => { setShowStartPicker(Platform.OS === 'ios'); if (d) setStartDate(d); }}
+                        maximumDate={endDate}
+                      />
+                    )}
+                    {showEndPicker && (
+                      <DateTimePicker
+                        value={endDate}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                        onChange={(e, d) => { setShowEndPicker(Platform.OS === 'ios'); if (d) setEndDate(d); }}
+                        minimumDate={startDate}
+                      />
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -111,5 +179,41 @@ const styles = StyleSheet.create({
   selectedText: {
     color: 'white',
     fontWeight: '600',
+  },
+  customContainer: {
+    padding: 12,
+    backgroundColor: '#fafafa',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  customRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  pill: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 24,
+    backgroundColor: '#f0f0f0',
+    marginTop: 8,
+  },
+  pillText: {
+    textAlign: 'center',
+    color: '#111',
+    fontWeight: '600',
+  },
+  applyBtn: {
+    marginTop: 12,
+    backgroundColor: '#111827',
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  applyBtnText: {
+    textAlign: 'center',
+    color: '#fff',
+    fontWeight: '700',
   },
 });
