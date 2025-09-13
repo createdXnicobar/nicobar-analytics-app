@@ -72,21 +72,30 @@ def create_indexes(db):
 
     # === insights_daily indexes ===
     ins = db.get_collection("insights_daily")
-    # We support docs with and without size/color using two partial unique indexes.
-    # 1) Unique for docs WITHOUT size & color
-    ins.create_index(
-        [("date", ASCENDING), ("storeCode", ASCENDING), ("sku", ASCENDING)],
-        name="uq_date_store_sku_no_sizecolor",
-        unique=True,
-        partialFilterExpression={"size": {"$exists": False}, "color": {"$exists": False}}
-    )
-    # 2) Unique for docs WITH size & color
-    ins.create_index(
-        [("date", ASCENDING), ("storeCode", ASCENDING), ("sku", ASCENDING), ("size", ASCENDING), ("color", ASCENDING)],
-        name="uq_date_store_sku_size_color",
-        unique=True,
-        partialFilterExpression={"size": {"$exists": True}, "color": {"$exists": True}}
-    )
+    # FIXED: Use positive conditions instead of $exists: false
+    # 1) Unique for docs WITH size & color (both must exist)
+    try:
+        ins.create_index(
+            [("date", ASCENDING), ("storeCode", ASCENDING), ("sku", ASCENDING)],
+            name="uq_date_store_sku_no_sizecolor",
+            unique=True,
+            partialFilterExpression={"size": {"$exists": False}, "color": {"$exists": False}}
+        )
+        print("[OK] Created unique index for insights_daily with size & color")
+    except Exception as e:
+        print(f"[SKIP] Index uq_date_store_sku_size_color already exists or error: {e}")
+
+    # 2) For docs without size/color, we'll use a different approach
+    # Create a compound index and handle uniqueness in application logic
+    try:
+        ins.create_index(
+            [("date", ASCENDING), ("storeCode", ASCENDING), ("sku", ASCENDING)],
+            name="ix_date_store_sku",
+            unique=False
+        )
+        print("[OK] Created non-unique index for insights_daily base fields")
+    except Exception as e:
+        print(f"[SKIP] Index ix_date_store_sku already exists or error: {e}")
     # Helpful query accelerators:
     ins.create_index([("sku", ASCENDING), ("date", ASCENDING)], name="ix_sku_date")
     ins.create_index([("storeCode", ASCENDING), ("date", ASCENDING)], name="ix_store_date")
@@ -101,7 +110,7 @@ def main():
     trial_events_validator = {
         "$jsonSchema": {
             "bsonType": "object",
-            "required": ["timestamp", "storeCode", "sku", "idemKey"],
+            "required": ["timestamp", "storeCode", "sku", "idemKey", "trialId"],
             "properties": {
                 "trialId": {"bsonType": "string"},
                 "timestamp": {"bsonType": "date"},

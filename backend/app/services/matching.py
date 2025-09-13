@@ -42,7 +42,7 @@ async def link_trials_to_purchases_for_date(
         best = None
         async for t in candidates:
             # ensure trial not already linked to some other purchase
-            already = await db.trial_purchase_links.find_one({"_id": str(t["_id"])})
+            already = await db.trial_purchase_links.find_one({"trialId": str(t["trialId"])})
             if already:
                 continue
             best = t

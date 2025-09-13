@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 
 class TrialIn(BaseModel):
-    # trialId: str
+    trialId: str | None = None
     sku: str
     storeCode: str
     timestamp: datetime | None = None

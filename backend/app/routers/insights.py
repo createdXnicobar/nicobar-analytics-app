@@ -9,7 +9,7 @@ router = APIRouter()
 @router.get("/v1/insights/store/{storeCode}", response_model=StoreInsightsResponse)
 async def get_store_insights(
     storeCode: str,
-    date: str = Query(..., description="YYYY-MM-DD UTC (end date inclusive)"),
+    date: str = Query(..., description="YYYY-MM-DD IST (end date inclusive)"),
     days: int = Query(7, ge=1, le=31)
 ):
     end_str = date                         # e.g., "2025-08-13" (IST)
