@@ -16,7 +16,7 @@ async def link_trials_to_purchases_for_date(
 ):
     start_utc, end_utc = ist_day_bounds(date_str)
 
-    purchases_cur = db.purchase_events.find({"orderDate": {"$gte": start_utc, "$lt": end_utc}})
+    purchases_cur = db.purchase_events.find({"orderDtm": {"$gte": start_utc, "$lt": end_utc}})
     # logger.info(await purchases_cur.to_list())
     count_linked = 0
 
@@ -28,7 +28,8 @@ async def link_trials_to_purchases_for_date(
 
         store = p["storeCode"]
         sku = p["sku"]
-        purchase_ts = p["orderDate"]
+        # Use the precise orderDtm timestamp
+        purchase_ts = p.get("orderDtm")
         window_start = purchase_ts - timedelta(hours=window_hours)
 
         # find candidate trials before purchase, same store & sku, in window

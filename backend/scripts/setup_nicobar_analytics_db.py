@@ -72,8 +72,7 @@ def create_indexes(db):
 
     # === insights_daily indexes ===
     ins = db.get_collection("insights_daily")
-    # FIXED: Use positive conditions instead of $exists: false
-    # 1) Unique for docs WITH size & color (both must exist)
+    # Unique for docs WITHOUT size & color (both must NOT exist)
     try:
         ins.create_index(
             [("date", ASCENDING), ("storeCode", ASCENDING), ("sku", ASCENDING)],
@@ -81,12 +80,12 @@ def create_indexes(db):
             unique=True,
             partialFilterExpression={"size": {"$exists": False}, "color": {"$exists": False}}
         )
-        print("[OK] Created unique index for insights_daily with size & color")
+        print("[OK] Created unique index for insights_daily without size & color")
     except Exception as e:
-        print(f"[SKIP] Index uq_date_store_sku_size_color already exists or error: {e}")
+        print(f"[SKIP] Index uq_date_store_sku_no_sizecolor already exists or error: {e}")
 
-    # 2) For docs without size/color, we'll use a different approach
-    # Create a compound index and handle uniqueness in application logic
+    # 2) For all docs, create a general compound index to accelerate queries.
+    # Uniqueness for docs without size/color is handled by the partial unique index above.
     try:
         ins.create_index(
             [("date", ASCENDING), ("storeCode", ASCENDING), ("sku", ASCENDING)],
@@ -164,11 +163,12 @@ def main():
     purchase_events_validator = {
         "$jsonSchema": {
             "bsonType": "object",
-            "required": ["orderNo", "lineNo", "orderDate", "storeCode", "sku", "qty", "priceList", "priceBilled", "currency", "idemKey"],
+            "required": ["orderNo", "lineNo", "orderDate", "orderDtm", "storeCode", "sku", "qty", "priceList", "priceBilled", "currency", "idemKey"],
             "properties": {
                 "orderNo": {"bsonType": "string"},
                 "lineNo": {"bsonType": "string"},
                 "orderDate": {"bsonType": "date"},
+                "orderDtm": {"bsonType": "date"},
                 "storeCode": {"bsonType": "string"},
                 "sku": {"bsonType": "string"},
                 "qty": {"bsonType": ["int", "long"]},

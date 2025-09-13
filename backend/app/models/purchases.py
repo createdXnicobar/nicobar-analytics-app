@@ -10,6 +10,7 @@ class InvoiceLine(BaseModel):
     Document_Type: str
     Order_No: str
     OrderDt: str
+    OrderDtm: str
     Line_No: str
     Item_Code: str
     Price: str
