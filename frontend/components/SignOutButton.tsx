@@ -1,13 +1,13 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { useClerk } from '@clerk/clerk-expo';
+import { useAuth } from '@/context/AuthContext';
 
 export const SignOutButton: React.FC = () => {
-  const { signOut } = useClerk();
+  const { logout } = useAuth();
 
   return (
     <TouchableOpacity
-      onPress={() => signOut()}
+      onPress={() => logout()}
       style={styles.btn}
       accessibilityLabel="Sign out"
     >

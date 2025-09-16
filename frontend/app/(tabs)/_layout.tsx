@@ -3,19 +3,11 @@ import React from 'react';
 import { Platform } from 'react-native';
 import { BundleProvider } from "@/context/BundleContext";
 import BottomNav from '@/components/BottomNav';
-import { SignedIn, SignedOut } from '@clerk/clerk-expo';
-import AnalyticsScreen from './analytics';
-import { Ionicons } from '@expo/vector-icons';
-
-
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof Ionicons>['name'];
-  color: string;
-}) {
-  return <Ionicons size={24} style={{ marginBottom: -3 }} {...props} />;
-}
+import { useAuth } from '@/context/AuthContext';
 
 export default function TabLayout() {
+  const { isAuthenticated, loading } = useAuth();
+
   const tabs = (
     <Tabs
       tabBar={props => <BottomNav {...props} />}
@@ -31,26 +23,16 @@ export default function TabLayout() {
       <Tabs.Screen name="scan" options={{ title: 'Scan' }} />
       <Tabs.Screen name="notes" options={{ title: 'Notes' }} />
       <Tabs.Screen name="account" options={{ title: 'Account' }} />
-      <Tabs.Screen
-        name="analytics"
-        options={{
-          title: 'Analytics',
-          tabBarIcon: ({ color }) => <TabBarIcon name="bar-chart" color={color} />,
-        }}
-      />
+      <Tabs.Screen name="analytics" options={{ title: 'Analytics' }} />
     </Tabs>
   );
 
+  if (loading) return null;
+  if (!isAuthenticated) return <Redirect href="/(auth)/sign-in" />;
+
   return (
-    <>
-      <SignedIn>
-        <BundleProvider>
-          {tabs}
-        </BundleProvider>
-      </SignedIn>
-      <SignedOut>
-        <Redirect href="/(auth)/sign-in" />
-      </SignedOut>
-    </>
+    <BundleProvider>
+      {tabs}
+    </BundleProvider>
   );
 }

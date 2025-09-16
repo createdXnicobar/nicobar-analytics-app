@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useClerk } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { useBundle } from '../../context/BundleContext'; // Context hook
+import { useAuth } from '@/context/AuthContext';
+
+const PUBLIC_PRODUCT_API = 'https://bronco.nicobar.com/api/getProductsbySKU?sku=';
 
 export default function Home() {
-  const { signOut } = useClerk();
+  const { logout } = useAuth();
   const router = useRouter();
   const { bundles } = useBundle();
   const [showFilter, setShowFilter] = useState(false);
@@ -21,8 +23,56 @@ export default function Home() {
   }, [bundles, days]);
 
   const onLogout = async () => {
-    await signOut();
+    await logout();
     router.replace('/(auth)/sign-in');
+  };
+
+  // Derive SKU from scanned codes (URL or raw SKU)
+  const deriveSku = (scannedCode?: string): string | null => {
+    if (!scannedCode) return null;
+    try {
+      const u = new URL(scannedCode);
+      return u.searchParams.get('sku') || scannedCode;
+    } catch {
+      return scannedCode;
+    }
+  };
+
+  // Basket preview modal state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewTitle, setPreviewTitle] = useState<string>('');
+  const [previewItems, setPreviewItems] = useState<Array<{ sku: string; title: string; image?: string }>>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const openPreview = async (bundle: Bundle) => {
+    setPreviewOpen(true);
+    setPreviewTitle(bundle.name);
+    setPreviewItems([]);
+    setPreviewLoading(true);
+    try {
+      const results: Array<{ sku: string; title: string; image?: string }> = [];
+      for (const item of bundle.items) {
+        const sku = deriveSku(item.scannedCode);
+        if (!sku) continue;
+        try {
+          const res = await fetch(`${PUBLIC_PRODUCT_API}${encodeURIComponent(sku)}`);
+          const json = await res.json();
+          const title = json?.data?.productDetails?.title || item.productTitle || sku;
+          const image = json?.data?.productDetails?.images?.[0];
+          results.push({ sku, title, image });
+        } catch {
+          results.push({ sku, title: item.productTitle || sku });
+        }
+      }
+      setPreviewItems(results);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setPreviewItems([]);
   };
 
   // Header section
@@ -41,6 +91,9 @@ export default function Home() {
           No baskets in selected range. Scan products to create baskets.
         </Text>
       )}
+      <TouchableOpacity style={[styles.btn, styles.logout]} onPress={onLogout}>
+        <Text style={styles.btnText}>Log out</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -61,18 +114,18 @@ export default function Home() {
   raw?: unknown;
 };
 
-type Bundle = {
-  id: string;
-  name: string;
-  items: ProductPayload[];
-};
-  
+  type Bundle = {
+    id: string;
+    name: string;
+    items: ProductPayload[];
+  };
+    
   // Each bundle card
   const renderBundle = ({ item }: { item: Bundle }) => (
-    <View style={styles.bundleCard}>
+    <TouchableOpacity style={styles.bundleCard} activeOpacity={0.85} onPress={() => openPreview(item)}>
       <Text style={styles.bundleName}>{item.name}</Text>
       <Text style={styles.bundleItems}>{item.items.map(i => i.productTitle || 'Unnamed Product').join(', ')}</Text>
-    </View>
+    </TouchableOpacity>
   );
 
   // Footer section (buttons)
@@ -90,7 +143,7 @@ type Bundle = {
   );
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
     <FlatList
       data={filtered}
       keyExtractor={(item) => item.id}
@@ -99,6 +152,42 @@ type Bundle = {
       ListFooterComponent={renderFooter}
       contentContainerStyle={styles.container}
     />
+
+    {/* Basket preview modal */}
+    <Modal visible={previewOpen} transparent animationType="slide" onRequestClose={closePreview}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.previewSheet}>
+          <View style={styles.sheetHandle} />
+          <TouchableOpacity onPress={closePreview} style={styles.closeBtn} accessibilityLabel="Close basket preview">
+            <Text style={{ color: '#111', fontWeight: '700' }}>✕</Text>
+          </TouchableOpacity>
+          <Text style={styles.previewTitle}>{previewTitle}</Text>
+          {previewLoading ? (
+            <ActivityIndicator color="#111" style={{ marginVertical: 16 }} />
+          ) : (
+            <FlatList
+              data={previewItems}
+              keyExtractor={(x, i) => `${x.sku}-${i}`}
+              renderItem={({ item }) => (
+                <View style={styles.previewItem}>
+                  {item.image ? (
+                    <Image source={{ uri: item.image }} style={styles.previewImage} />
+                  ) : (
+                    <View style={[styles.previewImage, { backgroundColor: '#e5e7eb' }]} />
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.previewSku}>SKU: {item.sku}</Text>
+                    <Text style={styles.previewName}>{item.title}</Text>
+                  </View>
+                </View>
+              )}
+              ListEmptyComponent={<Text style={{ color: '#6b7280' }}>No items in this basket</Text>}
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
+    
     <Modal visible={showFilter} transparent animationType="slide">
       <View style={styles.modalBackdrop}>
         <View style={styles.filterSheet}>
@@ -119,7 +208,7 @@ type Bundle = {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, paddingBottom: 48 },
+  container: { padding: 24, paddingBottom: 48, backgroundColor: '#fff' },
   header: { marginBottom: 16 },
   title: { textAlign: 'center', fontSize: 28, fontWeight: '800', marginBottom: 24 },
   logo: { width: 110, height: 110, borderRadius: 55, alignSelf: 'center', marginBottom: 16 },
@@ -161,4 +250,13 @@ const styles = StyleSheet.create({
   filterOptionText: { textAlign: 'center', color: '#111827', fontWeight: '600' },
   filterOptionTextActive: { color: '#fff' },
   closeFilter: { alignSelf: 'center', padding: 8 },
+  // Preview styles
+  previewSheet: { backgroundColor: '#fff', padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '80%' },
+  sheetHandle: { width: 160, height: 4, backgroundColor: '#ccc', alignSelf: 'center', borderRadius: 2, marginBottom: 12 },
+  closeBtn: { position: 'absolute', right: 16, top: 12, padding: 6, zIndex: 10 },
+  previewTitle: { fontSize: 18, fontWeight: '800', marginBottom: 12 },
+  previewItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: '#eee' },
+  previewImage: { width: 56, height: 56, borderRadius: 8, marginRight: 12 },
+  previewSku: { fontWeight: '700', color: '#111' },
+  previewName: { color: '#374151' },
 });

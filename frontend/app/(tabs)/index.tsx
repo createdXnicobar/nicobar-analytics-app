@@ -19,11 +19,7 @@ import { useBundle } from '../../context/BundleContext';
 import { useIsFocused } from "@react-navigation/native";
 
 // Backend base URL
-const BACKEND_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ||
-  (Platform.OS === "android"
-    ? "http://10.0.2.2:8000"
-    : "http://127.0.0.1:8000");
+const BACKEND_BASE_URL = 'https://95d18747500b.ngrok-free.app';
 const BACKEND_POST_PATH = "/v1/trials";
 
 // Configure your store code here (e.g., "AON", "BIN", ...)
@@ -165,7 +161,7 @@ export default function Index() {
   const fetchAndShowProduct = async (data: string, type: string) => {
     try {
       setSending(true);
-      const targetUrl = resolveProductUrl(data);
+      const targetUrl = buildProductUrlFromScan(data, type);
       const response = await fetch(targetUrl);
       if (!response.ok) throw new Error(`GET failed ${response.status}`);
       const json: NicobarApiResponse = await response.json();
@@ -199,16 +195,30 @@ export default function Index() {
     }
   };
 
-  const resolveProductUrl = (data: string): string => {
+  const buildProductUrlFromScan = (data: string, type?: string): string => {
+    const raw = (data || '').trim();
+    // If the scanner reported a non-QR symbology, treat payload as a plain SKU
+    if (type && type.toLowerCase() !== 'qr') {
+      return `${PUBLIC_PRODUCT_API}${encodeURIComponent(raw)}`;
+    }
+    // Otherwise, if it looks like a URL, use as-is; if not, treat as SKU
     try {
-      const u = new URL(data);
+      const u = new URL(raw);
       return u.toString();
     } catch (_) {
-      return `${PUBLIC_PRODUCT_API}${encodeURIComponent(data)}`;
+      return `${PUBLIC_PRODUCT_API}${encodeURIComponent(raw)}`;
     }
   };
 
   const generateId = () => `trial_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+
+  // Simple INR formatter
+  const formatINR = (value?: string) => {
+    if (!value) return "-";
+    const n = Number(value);
+    if (!isNaN(n)) return `₹${Math.round(n).toLocaleString('en-IN')}`;
+    return value;
+  };
 
   const deriveSku = async (scannedCode: string): Promise<string> => {
     try {
@@ -237,16 +247,16 @@ export default function Index() {
   const submitToBackend = async (productData: ProductPayload) => {
     try {
       setSending(true);
-      const trialId = generateId();
       const sku = await deriveSku(productData.scannedCode);
       
       const body = {
-        trialId,
         sku,
         storeCode: DEFAULT_STORE_CODE,
         feedback: productData.feedback,
         scannedBy: "app-user", 
-        bundleId: currentBasketId || undefined
+        bundleId: currentBasketId || undefined,
+        timestamp: new Date().toISOString(),
+        sessionId: null,
       };
 
       const submitUrl = `${BACKEND_BASE_URL}${BACKEND_POST_PATH}`;
@@ -256,7 +266,8 @@ export default function Index() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Idempotency-Key": uuid.v4() as string,
+          // use the same id for idempotency to match backend expectations
+          "X-Idempotency-Key": `trial_${Math.random().toString(36).slice(2)}_${Date.now()}`,
         },
         body: JSON.stringify(body),
       });
@@ -423,7 +434,7 @@ export default function Index() {
             <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
               <View style={styles.sheetHeader}>
                 {product?.image ? (
-                  <Image source={{ uri: product.image }} style={styles.productImage} />
+                  <Image source={{ uri: product.image }} style={styles.productImage} resizeMode="cover" />
                 ) : (
                   <View style={[styles.productImage, { backgroundColor: "#eee" }]} />
                 )}
@@ -434,15 +445,43 @@ export default function Index() {
                 </View>
               </View>
 
-              <View style={styles.tagRow}>
-                {product?.attributes?.color && <View style={styles.tag}><Text style={styles.tagText}>Color: {product.attributes.color}</Text></View>}
-                {product?.attributes?.size && <View style={styles.tag}><Text style={styles.tagText}>Size: {product.attributes.size}</Text></View>}
-                {product?.attributes?.material && <View style={styles.tag}><Text style={styles.tagText}>Cloth: {product.attributes.material}</Text></View>}
-              </View>
-
-              <View style={styles.tagRow}>
-                {product?.attributes?.category && <View style={styles.tag}><Text style={styles.tagText}>Category: {product.attributes.category}</Text></View>}
-                {product?.attributes?.subclass && <View style={styles.tag}><Text style={styles.tagText}>Subclass: {product.attributes.subclass}</Text></View>}
+              <View style={styles.detailList}>
+                {product?.price ? (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Price</Text>
+                    <Text style={styles.detailValue}>{formatINR(product.price)}</Text>
+                  </View>
+                ) : null}
+                {product?.attributes?.color ? (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Color</Text>
+                    <Text style={styles.detailValue}>{product.attributes.color}</Text>
+                  </View>
+                ) : null}
+                {product?.attributes?.size ? (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Size</Text>
+                    <Text style={styles.detailValue}>{product.attributes.size}</Text>
+                  </View>
+                ) : null}
+                {product?.attributes?.material ? (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Material</Text>
+                    <Text style={styles.detailValue}>{product.attributes.material}</Text>
+                  </View>
+                ) : null}
+                {product?.attributes?.category ? (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Category</Text>
+                    <Text style={styles.detailValue}>{product.attributes.category}</Text>
+                  </View>
+                ) : null}
+                {product?.attributes?.subclass ? (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Subclass</Text>
+                    <Text style={styles.detailValue}>{product.attributes.subclass}</Text>
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.feedbackSection}>
@@ -535,13 +574,18 @@ const styles = StyleSheet.create({
   scrollView: { maxHeight: "100%" },
   sheetHandle: { width: 160, height: 4, backgroundColor: "#ccc", alignSelf: "center", borderRadius: 2, marginBottom: 16 },
   sheetHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  productImage: { width: 64, height: 64, borderRadius: 8 },
-  productId: { color: "#666", fontSize: 12 },
+  productImage: { width: 64, height: 96, borderRadius: 8 },
+  productId: { color: "#111", fontSize: 14, fontWeight: '700' },
   productTitle: { color: "#111", fontSize: 20, fontWeight: "bold" },
   subtitleText: { color: "#333", marginTop: 2 },
   tagRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
   tag: { backgroundColor: "#f1f1f1", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8, marginBottom: 8 },
   tagText: { color: "#111" },
+  // New detail list styles
+  detailList: { backgroundColor: "#f9fafb", borderRadius: 12, paddingVertical: 6, marginTop: 8 },
+  detailRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: "#e5e7eb" },
+  detailLabel: { color: "#6b7280", fontWeight: "600" },
+  detailValue: { color: "#111827", fontWeight: "600" },
   feedbackSection: { marginTop: 20, marginBottom: 20 },
   feedbackTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12, color: '#333' },
   feedbackOptions: { flexDirection: 'row', flexWrap: 'wrap' },

@@ -39,6 +39,7 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 20,
     marginBottom: 8,
     paddingHorizontal: 8,
   },
@@ -62,6 +63,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     lineHeight: 18,
+    minHeight: 36, // ensure consistent two-line height so numbers align
   },
   cardNumber: {
     fontSize: 20,

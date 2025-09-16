@@ -4,13 +4,7 @@ import { Platform } from 'react-native';
 
 // Prefer environment variable; fall back to sensible defaults per platform
 // To set: add EXPO_PUBLIC_API_BASE_URL in your env (e.g., .env) pointing to FastAPI base URL
-const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ||
-  (Platform.OS === 'android'
-    ? 'http://10.0.2.2:8000' // Android emulator -> localhost of host machine
-    : Platform.OS === 'ios'
-    ? 'http://127.0.0.1:8000' // iOS simulator -> host loopback
-    : 'http://127.0.0.1:8000'); // web/dev fallback
+const API_BASE_URL = 'https://95d18747500b.ngrok-free.app';
 
 interface AnalyticsData {
   storeCode: string;
