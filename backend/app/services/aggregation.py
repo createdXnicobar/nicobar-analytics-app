@@ -27,7 +27,11 @@ async def build_insights_for_date(db: AsyncIOMotorDatabase, date_str: str):
     # 2) Purchases grouped by store+sku (+size/color snapshot at purchase time)
     purchases_map: dict[tuple, int] = Counter()
 
-    cur_p = db.purchase_events.find({"orderDate": {"$gte": start_utc, "$lt": end_utc}, "isFreeItem": {"$ne": True}})
+    # Use orderDtm for precise purchase time filtering
+    cur_p = db.purchase_events.find({
+        "orderDtm": {"$gte": start_utc, "$lt": end_utc}, 
+        "isFreeItem": {"$ne": True}
+    })
     async for p in cur_p:
         store = p["storeCode"]
         sku = p["sku"]

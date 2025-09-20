@@ -4,6 +4,7 @@ from app.models.trials import TrialIn, TrialAck
 from app.db.mongo import trial_events
 from app.services.product_resolver import fetch_product_by_sku
 from app.services.timeutil import to_utc, utc_now
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -13,9 +14,11 @@ async def create_trial(body: TrialIn, idem_key: str = Header(..., alias="X-Idemp
         raise HTTPException(status_code=409, detail="Duplicate")
 
     ts_utc = to_utc(body.timestamp) if body.timestamp else utc_now()
+
+    trialId = body.trialId or str(ObjectId())
     snap = await fetch_product_by_sku(body.sku)
     doc = {
-        # "trialId": body.trialId,
+        "trialId": trialId,
         "timestamp": ts_utc,
         "storeCode": body.storeCode.upper(),
         "sku": body.sku,
