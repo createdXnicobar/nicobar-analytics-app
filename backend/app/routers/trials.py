@@ -1,15 +1,18 @@
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Depends
 from datetime import datetime, timezone
 from app.models.trials import TrialIn, TrialAck
 from app.db.mongo import trial_events
 from app.services.product_resolver import fetch_product_by_sku
 from app.services.timeutil import to_utc, utc_now
 from bson import ObjectId
+from app.security.nicobar_auth import require_store_user
 
 router = APIRouter()
 
 @router.post("/v1/trials", response_model=TrialAck, status_code=201)
-async def create_trial(body: TrialIn, idem_key: str = Header(..., alias="X-Idempotency-Key")):
+async def create_trial(body: TrialIn, 
+                       idem_key: str = Header(..., alias="X-Idempotency-Key"), 
+                       auth=Depends(require_store_user)):
     if await trial_events().find_one({"idemKey": idem_key}):
         raise HTTPException(status_code=409, detail="Duplicate")
 
