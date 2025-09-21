@@ -1,0 +1,75 @@
+import { View, Text, StyleSheet } from 'react-native';
+
+interface SummaryCardsProps {
+  totals: {
+    trials: number;
+    purchases: number;
+    conversion: number;
+  };
+}
+
+export default function SummaryCards({ totals }: SummaryCardsProps) {
+  // Calculate and nicely format conversion percentage (avoid trailing .00)
+  const raw = totals.trials ? (totals.purchases / totals.trials) * 100 : 0;
+  const rounded = Math.round(raw * 100) / 100; // keep two decimals at most
+  const conversionRate = Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(2);
+
+  return (
+    <View style={styles.container}>
+      {/* Total Trials Card */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle} numberOfLines={2}>Total Trial Scans</Text>
+        <Text style={styles.cardNumber}>{totals.trials}</Text>
+      </View>
+
+      {/* Items Sold Card */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle} numberOfLines={2}>Items Sold</Text>
+        <Text style={styles.cardNumber}>{totals.purchases}</Text>
+      </View>
+
+      {/* Conversion Rate Card */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle} numberOfLines={2}>Conversion Rate</Text>
+        <Text style={styles.cardNumber}>{conversionRate}%</Text>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    marginBottom: 8,
+    paddingHorizontal: 8,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3, // for Android shadow
+  },
+  cardTitle: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 8,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 18,
+    minHeight: 36, // ensure consistent two-line height so numbers align
+  },
+  cardNumber: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+});
