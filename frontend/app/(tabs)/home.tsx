@@ -91,9 +91,6 @@ export default function Home() {
           No baskets in selected range. Scan products to create baskets.
         </Text>
       )}
-      <TouchableOpacity style={[styles.btn, styles.logout]} onPress={onLogout}>
-        <Text style={styles.btnText}>Log out</Text>
-      </TouchableOpacity>
     </View>
   );
 

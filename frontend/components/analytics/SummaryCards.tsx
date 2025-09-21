@@ -9,8 +9,10 @@ interface SummaryCardsProps {
 }
 
 export default function SummaryCards({ totals }: SummaryCardsProps) {
-  // Calculate the conversion rate percentage
-  const conversionRate = ((totals.purchases / totals.trials) * 100).toFixed(2);
+  // Calculate and nicely format conversion percentage (avoid trailing .00)
+  const raw = totals.trials ? (totals.purchases / totals.trials) * 100 : 0;
+  const rounded = Math.round(raw * 100) / 100; // keep two decimals at most
+  const conversionRate = Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(2);
 
   return (
     <View style={styles.container}>

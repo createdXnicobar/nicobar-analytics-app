@@ -106,6 +106,7 @@ export default function Index() {
   const [currentBasket, setCurrentBasket] = useState<ProductPayload[]>([]);
   const [currentBasketId, setCurrentBasketId] = useState<string | null>(null);
   const { addBasket } = useBundle();
+  const [toast, setToast] = useState<string | null>(null);
 
   
   useEffect(() => {
@@ -143,9 +144,18 @@ export default function Index() {
     };
   }, [countdown]);
 
+  const isLikelySku = (raw: string): boolean => {
+    const s = (raw || "").trim();
+    if (!s || s.includes("://") || s.toLowerCase().startsWith("http")) return false;
+    return /^[A-Za-z0-9_-]{3,32}$/.test(s);
+  };
+
   const handleScan = ({ data, type }: { data: string; type: string }) => {
     if (!canScan || sending) return;
     if (!data) return;
+
+    // Accept only barcodes that look like plain SKU strings; ignore QR and URLs
+    if (type?.toLowerCase() === "qr" || !isLikelySku(data)) return;
 
     if (lastScanned.current === data) return;
 
@@ -244,7 +254,7 @@ export default function Index() {
   };
 
   // Use the existing /v1/trials endpoint
-  const submitToBackend = async (productData: ProductPayload) => {
+  const submitToBackend = async (productData: ProductPayload, opts?: { silent?: boolean }) => {
     try {
       setSending(true);
       const sku = await deriveSku(productData.scannedCode);
@@ -276,16 +286,22 @@ export default function Index() {
         const errorText = await res.text();
         throw new Error(`POST ${submitUrl} → ${res.status} ${res.statusText}: ${errorText}`);
       }
-      
-      Alert.alert("Submitted", "Trial stored successfully with feedback.");
+      // Close the details modal immediately on success
       setModalVisible(false);
+      if (!opts?.silent) {
+        setToast("Submitted successfully");
+        setTimeout(() => setToast(null), 1500);
+      }
       // re-scan
       setCanScan(true);
       lastScanned.current = null;
       setCameraKey(prev => prev + 1);
       
     } catch (err) {
-      Alert.alert("Submit Error", String(err));
+      // Always close modal to prevent stuck UI, then show error toast
+      setModalVisible(false);
+      setToast("Submit failed");
+      setTimeout(() => setToast(null), 1800);
     } finally {
       setSending(false);
       lastScanned.current = null;
@@ -322,10 +338,10 @@ export default function Index() {
       setCurrentBasketId(basketId);
       // Submit each item individually to the existing endpoint with shared bundleId
       for (const item of currentBasket) {
-        await submitToBackend(item);
+        await submitToBackend(item, { silent: true });
       }
-      
-      Alert.alert("Success", `Submitted ${currentBasket.length} items from basket`);
+      setToast(`Submitted ${currentBasket.length} items`);
+      setTimeout(() => setToast(null), 1500);
       // Save to local context for home screen listing
       addBasket(currentBasket);
       // Reset basket after submit
@@ -401,6 +417,11 @@ export default function Index() {
               <Text style={styles.loadingText}>Processing...</Text>
             </View>
           )}
+          {toast && (
+            <View style={styles.toast}>
+              <Text style={styles.toastText}>{toast}</Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -441,7 +462,6 @@ export default function Index() {
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.productId}>#{product?.scannedCode ?? ""}</Text>
                   <Text style={styles.productTitle}>{product?.productTitle ?? "Product"}</Text>
-                  <Text style={styles.subtitleText}>Country of Origin: India</Text>
                 </View>
               </View>
 
@@ -468,18 +488,6 @@ export default function Index() {
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Material</Text>
                     <Text style={styles.detailValue}>{product.attributes.material}</Text>
-                  </View>
-                ) : null}
-                {product?.attributes?.category ? (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Category</Text>
-                    <Text style={styles.detailValue}>{product.attributes.category}</Text>
-                  </View>
-                ) : null}
-                {product?.attributes?.subclass ? (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Subclass</Text>
-                    <Text style={styles.detailValue}>{product.attributes.subclass}</Text>
                   </View>
                 ) : null}
               </View>
@@ -599,4 +607,6 @@ const styles = StyleSheet.create({
   addToBasketButton: { backgroundColor: '#10b981' },
   submitButton: { backgroundColor: '#111827' },
   bigButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 14, textAlign: 'center' },
+  toast: { position: 'absolute', bottom: 24, alignSelf: 'center', backgroundColor: 'rgba(17,24,39,0.95)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  toastText: { color: '#fff', fontWeight: '700' },
 });

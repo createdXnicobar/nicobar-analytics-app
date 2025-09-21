@@ -88,7 +88,7 @@ export default function TopTryNotBuyList({ items }: TopTryNotBuyListProps) {
         {items.map((item) => (
           <TouchableOpacity key={item.sku} style={styles.itemCard} onPress={() => openProduct(item.sku)} activeOpacity={0.85}>
             {imageMap[item.sku] ? (
-              <Image source={{ uri: imageMap[item.sku]! }} style={styles.cardImage} />
+              <Image source={{ uri: imageMap[item.sku]! }} style={styles.cardImage} resizeMode="cover" />
             ) : (
               <View style={[styles.cardImage, { backgroundColor: '#e5e7eb' }]} />
             )}
@@ -185,11 +185,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  cardImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 8,
-  },
+  cardImage: { width: 56, height: 84, borderRadius: 8 },
   itemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
