@@ -11,7 +11,7 @@ IMAGE_TAG=${1:-latest}
 ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}:${IMAGE_TAG}"
 
 # Build Docker image
-docker build -f ../Dockerfile -t ${REPO_NAME}:${IMAGE_TAG} ..
+docker build --platform linux/amd64 -f ../Dockerfile -t ${REPO_NAME}:${IMAGE_TAG} ..
 
 
 docker tag ${REPO_NAME}:${IMAGE_TAG} ${ECR_URI}
