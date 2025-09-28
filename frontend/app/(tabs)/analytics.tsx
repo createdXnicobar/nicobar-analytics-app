@@ -5,9 +5,11 @@ import useAnalytics from '../../hooks/useAnalytics';
 import SummaryCards from '../../components/analytics/SummaryCards';
 import TopTryNotBuyList from '../../components/analytics/TopTryNotBuyList';
 import DateFilter from '../../components/analytics/DateFilter';
+import { useAuth } from '@/context/AuthContext';
 
 export default function AnalyticsScreen() {
-  const [storeCode] = useState("BIN");
+  const { user } = useAuth();
+  const [storeCode] = useState((user?.storeCode || "BIN").toUpperCase());
   const [showDateFilter, setShowDateFilter] = useState(false);
 
   const [dateRange, setDateRange] = useState({

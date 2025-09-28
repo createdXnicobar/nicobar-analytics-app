@@ -30,6 +30,9 @@ export default function TopTryNotBuyList({ items }: TopTryNotBuyListProps) {
             try {
               const res = await fetch(`${PUBLIC_PRODUCT_API}${encodeURIComponent(it.sku)}`);
               const json = await res.json();
+              if (json?.data?.productDetails?.title) {
+                it.title = json?.data?.productDetails?.title;
+              }
               const url: string | null = json?.data?.productDetails?.images?.[0] ?? null;
               return [it.sku, url];
             } catch {
@@ -97,6 +100,8 @@ export default function TopTryNotBuyList({ items }: TopTryNotBuyListProps) {
                 <Text style={styles.sku}>SKU: {item.sku}</Text>
                 <Text style={styles.conversion}>{(item.conversion * 100).toFixed(1)}%</Text>
               </View>
+              <Text style={styles.title}>{item.title ? <Text style={styles.title}>{item.title}</Text> : null}</Text>
+              <Text></Text>
               {(item.color || item.size) && (
                 <Text style={styles.details}>
                   {item.color} {item.size}
@@ -161,6 +166,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
   },
+  cardTitle: { color: '#374151', marginTop: 2 },
   sectionHeader: {
     fontSize: 18,
     fontWeight: '600',
@@ -195,6 +201,10 @@ const styles = StyleSheet.create({
   sku: {
     fontWeight: '500',
     fontSize: 16,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: '400',
   },
   conversion: {
     fontWeight: 'bold',

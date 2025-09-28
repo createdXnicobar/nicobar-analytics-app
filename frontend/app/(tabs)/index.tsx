@@ -16,14 +16,17 @@ import { Platform } from "react-native";
 import { CameraView, Camera } from "expo-camera";
 import uuid from 'react-native-uuid';
 import { useBundle } from '../../context/BundleContext';
+import { useAuth } from '@/context/AuthContext';
 import { useIsFocused } from "@react-navigation/native";
+import * as SecureStore from 'expo-secure-store';
+
 
 // Backend base URL
-const BACKEND_BASE_URL = 'https://95d18747500b.ngrok-free.app';
+const BACKEND_BASE_URL = 'https://b37e063efa55.ngrok-free.app';
 const BACKEND_POST_PATH = "/v1/trials";
 
-// Configure your store code here (e.g., "AON", "BIN", ...)
-const DEFAULT_STORE_CODE = "BIN";
+// Store code comes from authenticated user profile; falls back to BIN
+const DEFAULT_FALLBACK_STORE = "BIN";
 
 // Public GET API base used when the scanned data is an SKU, not a URL
 const PUBLIC_PRODUCT_API = "https://bronco.nicobar.com/api/getProductsbySKU?sku=";
@@ -87,6 +90,7 @@ interface Basket {
 }
 
 export default function Index() {
+  const { user } = useAuth();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [sending, setSending] = useState(false);
   const [canScan, setCanScan] = useState(true);
@@ -261,7 +265,7 @@ export default function Index() {
       
       const body = {
         sku,
-        storeCode: DEFAULT_STORE_CODE,
+        storeCode: (user?.storeCode || DEFAULT_FALLBACK_STORE).toUpperCase(),
         feedback: productData.feedback,
         scannedBy: "app-user", 
         bundleId: currentBasketId || undefined,
@@ -271,13 +275,14 @@ export default function Index() {
 
       const submitUrl = `${BACKEND_BASE_URL}${BACKEND_POST_PATH}`;
       console.log("Submitting to backend:", { url: submitUrl, body });
-
+      const token = await SecureStore.getItemAsync('auth_token');
       const res = await fetch(submitUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           // use the same id for idempotency to match backend expectations
           "X-Idempotency-Key": `trial_${Math.random().toString(36).slice(2)}_${Date.now()}`,
+          "X-Auth-Token": token ?? "",
         },
         body: JSON.stringify(body),
       });
