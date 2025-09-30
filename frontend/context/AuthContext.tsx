@@ -62,7 +62,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'X-Auth-Token': authToken },
       });
       const json = await res.json();
-      console.log('[Auth] userAuth response:', json);
       if (json?.status !== true) return false; // service error
       return json?.userAuth === true;
     } catch (e) {
@@ -75,14 +74,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       console.log('[Auth] POST', LOGIN_URL, { email });
-      console.log("password", password);
       const res = await fetch(LOGIN_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
       const json = await res.json();
-      console.log('[Auth] login response:', json);
 
       if (json?.status !== true) {
         return { ok: false, message: json?.message || 'Login failed' };

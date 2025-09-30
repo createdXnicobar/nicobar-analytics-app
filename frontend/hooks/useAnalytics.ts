@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 // Prefer environment variable; fall back to sensible defaults per platform
 // To set: add EXPO_PUBLIC_API_BASE_URL in your env (e.g., .env) pointing to FastAPI base URL
-const API_BASE_URL = 'https://b37e063efa55.ngrok-free.app';
+const API_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
 
 interface AnalyticsData {
   storeCode: string;
