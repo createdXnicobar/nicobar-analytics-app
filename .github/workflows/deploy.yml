@@ -1,0 +1,46 @@
+name: Deploy New Version to AWS App Runner
+
+on:
+  # TODO: uncomment this later. only supporting workflow_dispatch for now
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - "backend/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Make deployment scripts executable
+        run: |
+          chmod +x backend/deployment/deploy-new-version.sh
+          chmod +x backend/deployment/push-to-ecr.sh
+
+      - name: Deploy new version
+        run: |
+          cd backend/deployment
+          ./deploy-new-version.sh ${{ github.sha }}
+        env:
+          AWS_DEFAULT_REGION: ap-south-1
+
+      - name: Deployment status
+        run: |
+          echo "Deployment completed successfully!"
+          echo "Image tag: ${{ github.sha }}"
+          echo "Commit: ${{ github.event.head_commit.message }}"
