@@ -22,7 +22,7 @@ import * as SecureStore from 'expo-secure-store';
 
 
 // Backend base URL
-const BACKEND_BASE_URL = 'https://b37e063efa55.ngrok-free.app';
+const BACKEND_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
 const BACKEND_POST_PATH = "/v1/trials";
 
 // Store code comes from authenticated user profile; falls back to BIN
@@ -201,7 +201,23 @@ export default function Index() {
       setSelectedFeedbacks([]);
       setModalVisible(true);
     } catch (err) {
-      Alert.alert("Scan Error", String(err));
+      const msg = String(err || "error");
+      let short = "Scan failed";
+      const match = msg.match(/\b(401|403|404|5\d{2})\b/);
+    if (match) {
+      const status = match[0];
+      if (status === "401" || status === "403") {
+        short = `Unauthorized (${status}) – please sign in`;
+      } else if (status === "404") {
+        short = `Not Found (${status}) – ${msg}`;
+      } else if (status.startsWith("5")) {
+        short = `Server Error (${status}) – try again`;
+      } else {
+        short = `Error (${status}) – ${msg}`;
+      }
+    } else {
+      short = `Error – ${msg}`;
+    }
       setCanScan(true);
       lastScanned.current = null;
     } finally {
@@ -288,8 +304,15 @@ export default function Index() {
       });
       
       if (!res.ok) {
+        const status = res.status;
         const errorText = await res.text();
-        throw new Error(`POST ${submitUrl} → ${res.status} ${res.statusText}: ${errorText}`);
+        console.log("submit error", { status, errorText });
+        let message = "Submit failed";
+        if (status === 401 || status === 403) message = "Unauthorized – please sign in again";
+        else if (status === 409) message = "Duplicate submission";
+        else if (status === 422) message = "Invalid data – please rescan";
+        else if (status >= 500) message = "Server error – try later";
+        throw new Error(message);
       }
       // Close the details modal immediately on success
       setModalVisible(false);
@@ -305,7 +328,7 @@ export default function Index() {
     } catch (err) {
       // Always close modal to prevent stuck UI, then show error toast
       setModalVisible(false);
-      setToast("Submit failed");
+      setToast(String((err as Error)?.message || "Submit failed"));
       setTimeout(() => setToast(null), 1800);
     } finally {
       setSending(false);
@@ -323,7 +346,8 @@ export default function Index() {
       setCurrentBasketId(String(uuid.v4()));
     }
     setCurrentBasket(prev => [...prev, productWithFeedback]);
-    Alert.alert("Added to Basket", `Item added to trial basket (${currentBasket.length + 1} items)`);
+    setToast(`Added to basket (${currentBasket.length + 1})`);
+    setTimeout(() => setToast(null), 1200);
     setModalVisible(false);
     setCanScan(true);
     setSelectedFeedbacks([]);
@@ -333,7 +357,8 @@ export default function Index() {
 
   const submitBasket = async () => {
     if (currentBasket.length === 0) {
-      Alert.alert("Empty Basket", "No items in the basket to submit");
+      setToast("Basket is empty");
+      setTimeout(() => setToast(null), 1200);
       return;
     }
     
@@ -354,7 +379,8 @@ export default function Index() {
       setCurrentBasketId(null);
       
     } catch (error) {
-      Alert.alert("Error", "Failed to submit basket");
+      setToast("Basket submit failed");
+      setTimeout(() => setToast(null), 1500);
     } finally {
       setSending(false);
     }
@@ -393,8 +419,8 @@ export default function Index() {
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: Math.max(30, insets.top) }] }>
-      <Text style={styles.title}>Scan QR / Barcode</Text>
-      <Text style={styles.subtitle}>Point camera at QR code - scans automatically</Text>
+      <Text style={styles.title}>Scan Barcode</Text>
+      <Text style={styles.subtitle}>Point camera at Barcode - scans automatically</Text>
       
       <BasketStatus />
       
@@ -608,7 +634,7 @@ const styles = StyleSheet.create({
   feedbackOptionTextSelected: { color: '#fff' },
   threeButtonRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, gap: 8 },
   bigButton: { flex: 1, paddingVertical: 16, borderRadius: 12, alignItems: 'center', minHeight: 60, justifyContent: 'center' },
-  retakeButton: { backgroundColor: '#10b981' },
+  retakeButton: { backgroundColor: '#6b7280' },
   addToBasketButton: { backgroundColor: '#10b981' },
   submitButton: { backgroundColor: '#111827' },
   bigButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 14, textAlign: 'center' },
