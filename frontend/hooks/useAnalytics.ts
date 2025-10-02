@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Platform } from 'react-native';
 
 // Prefer environment variable; fall back to sensible defaults per platform
 // To set: add EXPO_PUBLIC_API_BASE_URL in your env (e.g., .env) pointing to FastAPI base URL
@@ -50,7 +49,6 @@ const useAnalytics = (storeCode: string, date: string, days: number) => {
       });
 
       console.log('✅ Success! Response status:', response.status);
-      console.log('📦 Response data:', response.data);
       
       setData(response.data);
     } catch (err: any) {

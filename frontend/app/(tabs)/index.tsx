@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
   View,
   Button,
-  Alert,
   ActivityIndicator,
   Modal,
   Image,
@@ -26,7 +25,7 @@ const BACKEND_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
 const BACKEND_POST_PATH = "/v1/trials";
 
 // Store code comes from authenticated user profile; falls back to BIN
-const DEFAULT_FALLBACK_STORE = "BIN";
+const DEFAULT_FALLBACK_STORE = "DKN";
 
 // Public GET API base used when the scanned data is an SKU, not a URL
 const PUBLIC_PRODUCT_API = "https://bronco.nicobar.com/api/getProductsbySKU?sku=";
@@ -179,6 +178,15 @@ export default function Index() {
       const response = await fetch(targetUrl);
       if (!response.ok) throw new Error(`GET failed ${response.status}`);
       const json: NicobarApiResponse = await response.json();
+      // Short-circuit if upstream explicitly says status=false (SKU not found)
+      if (typeof (json as any)?.status === 'boolean' && (json as any).status === false) {
+        setToast("Product not found");
+        setTimeout(() => setToast(null), 1400);
+        setCanScan(true);
+        lastScanned.current = null;
+        setCameraKey(prev => prev + 1);
+        return;
+      }
 
       const payload: ProductPayload = {
         scannedCode: data,
@@ -239,8 +247,6 @@ export default function Index() {
       return `${PUBLIC_PRODUCT_API}${encodeURIComponent(raw)}`;
     }
   };
-
-  const generateId = () => `trial_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 
   // Simple INR formatter
   const formatINR = (value?: string) => {
