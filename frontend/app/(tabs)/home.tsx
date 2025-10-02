@@ -1,35 +1,53 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useBundle } from '../../context/BundleContext';
+import { useAuth } from '@/context/AuthContext';
+import * as SecureStore from 'expo-secure-store';
 
-const PUBLIC_PRODUCT_API = 'https://bronco.nicobar.com/api/getProductsbySKU?sku=';
+const BACKEND_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
 
 export default function Home() {
   const router = useRouter();
   const { bundles } = useBundle();
+  const { user } = useAuth();
   const [showFilter, setShowFilter] = useState(false);
   const [days, setDays] = useState<number>(1);
+  const [remoteBundles, setRemoteBundles] = useState<any[]>([]);
+  const [loadingBundles, setLoadingBundles] = useState(false);
+  const [totalBundles, setTotalBundles] = useState<number>(0);
 
-  const filtered = useMemo(() => {
-    const now = new Date();
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - (days - 1));
-    return bundles.filter(b => new Date(b.createdAt) >= start);
-  }, [bundles, days]);
+  // Show bundles from backend instead of session-local context
+  const filtered = useMemo(() => remoteBundles, [remoteBundles]);
 
-  // Derive SKU from scanned codes (URL or raw SKU)
-  const deriveSku = (scannedCode?: string): string | null => {
-    if (!scannedCode) return null;
-    try {
-      const u = new URL(scannedCode);
-      return u.searchParams.get('sku') || scannedCode;
-    } catch {
-      return scannedCode;
-    }
-  };
+  // Fetch remote bundles for logged-in user
+  useEffect(() => {
+    const fetchBundles = async () => {
+      if (!user?.email) { setRemoteBundles([]); return; }
+      try {
+        setLoadingBundles(true);
+        const token = await SecureStore.getItemAsync('auth_token');
+        const url = `${BACKEND_BASE_URL}/v1/bundles/${encodeURIComponent(user.email)}?days=${Math.min(Math.max(days, 1), 31)}`;
+        const res = await fetch(url, { headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token ?? '' } });
+        if (!res.ok) {
+          console.log('fetch bundles error', res.status, await res.text());
+          setRemoteBundles([]);
+          return;
+        }
+        const json = await res.json();
+        setRemoteBundles(Array.isArray(json?.bundles) ? json.bundles : []);
+        setTotalBundles(typeof json?.totalBundles === 'number' ? json.totalBundles : (Array.isArray(json?.bundles) ? json.bundles.length : 0));
+      } catch (e) {
+        console.log('fetch bundles exception', e);
+        setRemoteBundles([]);
+        setTotalBundles(0);
+      } finally {
+        setLoadingBundles(false);
+      }
+    };
+    void fetchBundles();
+  }, [user?.email, days]);
 
   // Basket preview modal state
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -37,26 +55,18 @@ export default function Home() {
   const [previewItems, setPreviewItems] = useState<Array<{ sku: string; title: string; image?: string }>>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  const openPreview = async (bundle: Bundle) => {
+  const openPreview = async (bundle: any) => {
     setPreviewOpen(true);
-    setPreviewTitle(bundle.name);
+    setPreviewTitle(bundle?.bundleId ? `Bundle ${String(bundle.bundleId).slice(-6)}` : (bundle?.name || 'Bundle'));
     setPreviewItems([]);
     setPreviewLoading(true);
     try {
-      const results: Array<{ sku: string; title: string; image?: string }> = [];
-      for (const item of bundle.items) {
-        const sku = deriveSku(item.scannedCode);
-        if (!sku) continue;
-        try {
-          const res = await fetch(`${PUBLIC_PRODUCT_API}${encodeURIComponent(sku)}`);
-          const json = await res.json();
-          const title = json?.data?.productDetails?.title || item.productTitle || sku;
-          const image = json?.data?.productDetails?.images?.[0];
-          results.push({ sku, title, image });
-        } catch {
-          results.push({ sku, title: item.productTitle || sku });
-        }
-      }
+      // Prefer productSnapshot from backend to avoid extra network calls
+      const results: Array<{ sku: string; title: string; image?: string }> = (bundle?.items || []).map((trial: any) => ({
+        sku: trial?.sku,
+        title: trial?.productSnapshot?.title || trial?.sku,
+        image: trial?.productSnapshot?.imageUrl,
+      }));
       setPreviewItems(results);
     } finally {
       setPreviewLoading(false);
@@ -68,7 +78,6 @@ export default function Home() {
     setPreviewItems([]);
   };
 
-  // Header section
   const renderHeader = () => (
     <View style={styles.header}>
       <Text style={styles.title}>Nicobar Retail</Text>
@@ -79,6 +88,7 @@ export default function Home() {
           <Text style={styles.filterChipText}>{days === 1 ? 'Today' : `Last ${days} days`}</Text>
         </TouchableOpacity>
       </View>
+      <Text style={styles.totalBundlesText}>Total Bundles: {totalBundles}</Text>
       {filtered.length === 0 && (
         <Text style={styles.emptyText}>
           No baskets in selected range. Scan products to create baskets.
@@ -111,10 +121,24 @@ export default function Home() {
   };
     
   // Each bundle card
-  const renderBundle = ({ item }: { item: Bundle }) => (
+  const toIST = (iso: string | Date | undefined) => {
+    if (!iso) return '';
+    const d = typeof iso === 'string' ? new Date(iso) : iso;
+    return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const renderBundle = ({ item, index }: { item: any; index: number }) => (
     <TouchableOpacity style={styles.bundleCard} activeOpacity={0.85} onPress={() => openPreview(item)}>
-      <Text style={styles.bundleName}>{item.name}</Text>
-      <Text style={styles.bundleItems}>{item.items.map(i => i.productTitle || 'Unnamed Product').join(', ')}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <Text style={styles.bundleName}>{`Bundle ${index + 1}`}</Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          {item?.scanDate ? <Text style={styles.bundleDate}>{toIST(item.scanDate)}</Text> : null}
+          <Text style={styles.bundleCount}>{(item?.items?.length ?? 0)} item{(item?.items?.length ?? 0) === 1 ? '' : 's'}</Text>
+        </View>
+      </View>
+      <Text style={styles.bundleItems} numberOfLines={2}>
+        {(item?.items || []).map((t: any) => t?.productSnapshot?.title || t?.sku).filter(Boolean).join(', ')}
+      </Text>
     </TouchableOpacity>
   );
 
@@ -135,8 +159,8 @@ export default function Home() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
     <FlatList
-      data={filtered}
-      keyExtractor={(item) => item.id}
+      data={loadingBundles ? [] : filtered}
+      keyExtractor={(item, i) => item.id || item.bundleId || String(i)}
       renderItem={renderBundle}
       ListHeaderComponent={renderHeader}
       ListFooterComponent={renderFooter}
@@ -219,7 +243,10 @@ const styles = StyleSheet.create({
   emptyText: { color: '#6b7280', marginBottom: 10 },
   bundleCard: { backgroundColor: '#f9fafb', padding: 14, borderRadius: 8, marginBottom: 10 },
   bundleName: { fontSize: 16, fontWeight: '700' },
+  bundleDate: { color: '#6b7280' },
+  bundleCount: { color: '#374151', marginTop: 2, fontWeight: '600' },
   bundleItems: { color: '#374151', marginTop: 4 },
+  totalBundlesText: { color: '#111827', fontWeight: '700', marginTop: 6 },
   buttonGroup: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
   btn: {
     flex: 1,
