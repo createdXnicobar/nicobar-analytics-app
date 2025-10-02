@@ -11,5 +11,20 @@ class TrialIn(BaseModel):
     scannedBy: str # kept it as required for now
     bundleId: str | None = None # kept it as optional for now
 
+class TrialBatchIn(BaseModel):
+    trials: list[TrialIn]
+
+class TrialResult(BaseModel):
+    trialId: str
+    storedAt: datetime
+    success: bool
+    error: str | None = None
+
 class TrialAck(BaseModel):
     storedAt: datetime
+
+class TrialBatchAck(BaseModel):
+    results: list[TrialResult]
+    totalProcessed: int
+    successCount: int
+    errorCount: int
