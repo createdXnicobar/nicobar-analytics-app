@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Header, HTTPException
-from datetime import datetime, timezone
-from app.models.trials import TrialIn, TrialAck, TrialBatchIn, TrialBatchAck, TrialResult
+from fastapi import APIRouter, Header, HTTPException, Query
+from datetime import datetime, timezone, timedelta
+from app.models.trials import TrialIn, TrialAck, TrialBatchIn, TrialBatchAck, TrialResult, UserBundlesResponse, Bundle, TrialItem
 from app.db.mongo import trial_events
 from app.services.product_resolver import fetch_product_by_sku
 from app.services.timeutil import to_utc, utc_now
 from bson import ObjectId
+from typing import List
 
 router = APIRouter()
 
@@ -129,3 +130,77 @@ async def create_single_trial(body: TrialIn, idem_key: str = Header(..., alias="
 
     await trial_events().insert_one(doc)
     return TrialAck(storedAt=ts_utc)
+
+@router.get("/v1/bundles/{user_id}", response_model=UserBundlesResponse)
+async def get_user_bundles(
+    user_id: str,
+    days: int = Query(default=31, ge=1, le=31, description="Number of days to look back (1-31 days)")
+):
+    """
+    Get all bundles scanned by a particular user from the specified number of days.
+    Each bundle contains all items that were scanned together.
+    
+    Args:
+        user_id: The ID of the user whose bundles to retrieve
+        days: Number of days to look back (1-31 days, default: 31)
+    """
+    # Calculate the date based on the specified number of days
+    cutoff_date = utc_now() - timedelta(days=days)
+    
+    # Find all trials for this user that have a bundleId and are within the specified time range
+    user_trials = await trial_events().find(
+        {
+            "scannedBy": user_id,
+            "bundleId": {"$ne": None, "$exists": True},
+            "timestamp": {"$gte": cutoff_date}
+        }
+    ).to_list(length=None)
+    
+    if not user_trials:
+        return UserBundlesResponse(
+            user=user_id,
+            bundles=[],
+            totalBundles=0
+        )
+    
+    # Group trials by bundleId
+    bundles_dict = {}
+    for trial in user_trials:
+        bundle_id = trial["bundleId"]
+        if bundle_id not in bundles_dict:
+            bundles_dict[bundle_id] = []
+        
+        trial_item = TrialItem(
+            trialId=trial.get("trialId"),
+            sku=trial["sku"],
+            storeCode=trial["storeCode"],
+            timestamp=trial["timestamp"],
+            feedback=trial["feedback"],
+            sessionId=trial.get("sessionId"),
+            productSnapshot=trial.get("productSnapshot")
+        )
+        bundles_dict[bundle_id].append(trial_item)
+    
+    # Create Bundle objects
+    bundles = []
+    for bundle_id, items in bundles_dict.items():
+        # Sort items by timestamp for consistent ordering
+        items.sort(key=lambda x: x.timestamp)
+        
+        bundle = Bundle(
+            bundleId=bundle_id,
+            scannedBy=user_id,
+            items=items,
+            totalItems=len(items),
+            scanDate=items[0].timestamp  # Use the earliest scan time as bundle date
+        )
+        bundles.append(bundle)
+    
+    # Sort bundles by scan date (most recent first)
+    bundles.sort(key=lambda x: x.scanDate, reverse=True)
+    
+    return UserBundlesResponse(
+        user=user_id,
+        bundles=bundles,
+        totalBundles=len(bundles)
+    )
