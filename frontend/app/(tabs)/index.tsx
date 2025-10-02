@@ -283,7 +283,7 @@ export default function Index() {
         sku,
         storeCode: (user?.storeCode || DEFAULT_FALLBACK_STORE).toUpperCase(),
         feedback: productData.feedback,
-        scannedBy: "app-user", 
+        scannedBy: user?.email || "app-user", 
         bundleId: currentBasketId || undefined,
         timestamp: new Date().toISOString(),
         sessionId: null,
