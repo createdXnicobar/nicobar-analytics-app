@@ -115,10 +115,6 @@ export default function AnalyticsScreen() {
         >
           <Text style={styles.dateRangeText}>📅 {getDateRangeText()}</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity style={styles.downloadButton}>
-          <Text style={styles.downloadText}>Download executive summary</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Summary Cards */}
