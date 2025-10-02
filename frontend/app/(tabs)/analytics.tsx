@@ -9,7 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 
 export default function AnalyticsScreen() {
   const { user } = useAuth();
-  const [storeCode] = useState((user?.storeCode || "BIN").toUpperCase());
+  const [storeCode] = useState((user?.storeCode || "DKN").toUpperCase());
   const [showDateFilter, setShowDateFilter] = useState(false);
 
   const [dateRange, setDateRange] = useState({
@@ -85,7 +85,6 @@ export default function AnalyticsScreen() {
           </Text>
         </View>
 
-        {/* Date Filter Modal */}
         <DateFilter 
           visible={showDateFilter}
           onClose={() => setShowDateFilter(false)}

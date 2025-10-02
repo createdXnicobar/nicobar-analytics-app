@@ -1,14 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useBundle } from '../../context/BundleContext'; // Context hook
-import { useAuth } from '@/context/AuthContext';
+import { useBundle } from '../../context/BundleContext';
 
 const PUBLIC_PRODUCT_API = 'https://bronco.nicobar.com/api/getProductsbySKU?sku=';
 
 export default function Home() {
-  const { logout } = useAuth();
   const router = useRouter();
   const { bundles } = useBundle();
   const [showFilter, setShowFilter] = useState(false);
@@ -21,11 +19,6 @@ export default function Home() {
     start.setDate(start.getDate() - (days - 1));
     return bundles.filter(b => new Date(b.createdAt) >= start);
   }, [bundles, days]);
-
-  const onLogout = async () => {
-    await logout();
-    router.replace('/(auth)/sign-in');
-  };
 
   // Derive SKU from scanned codes (URL or raw SKU)
   const deriveSku = (scannedCode?: string): string | null => {

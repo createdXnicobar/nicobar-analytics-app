@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, ActivityIndicator, Dimensions, Image as RNImage } from 'react-native';
 
 interface Item {
@@ -30,6 +30,10 @@ export default function TopTryNotBuyList({ items }: TopTryNotBuyListProps) {
             try {
               const res = await fetch(`${PUBLIC_PRODUCT_API}${encodeURIComponent(it.sku)}`);
               const json = await res.json();
+              // Skip including in visuals if upstream returns { status: false }
+              if (typeof json?.status === 'boolean' && json.status === false) {
+                return [it.sku, null];
+              }
               if (json?.data?.productDetails?.title) {
                 it.title = json?.data?.productDetails?.title;
               }
