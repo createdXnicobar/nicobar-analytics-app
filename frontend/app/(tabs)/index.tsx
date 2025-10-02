@@ -82,12 +82,6 @@ type NicobarApiResponse = {
   };
 };
 
-interface Basket {
-  id: string;
-  items: ProductPayload[];
-  createdAt: Date;
-}
-
 export default function Index() {
   const { user } = useAuth();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
@@ -285,15 +279,16 @@ export default function Index() {
       setSending(true);
       const sku = await deriveSku(productData.scannedCode);
       
-      const body = {
+      const trial = {
         sku,
         storeCode: (user?.storeCode || DEFAULT_FALLBACK_STORE).toUpperCase(),
-        feedback: productData.feedback,
-        scannedBy: user?.email || "app-user", 
-        bundleId: currentBasketId || undefined,
         timestamp: new Date().toISOString(),
+        feedback: productData.feedback,
         sessionId: null,
+        scannedBy: user?.email || "app-user",
+        bundleId: currentBasketId || undefined,
       };
+      const body = { trials: [trial] };
 
       const submitUrl = `${BACKEND_BASE_URL}${BACKEND_POST_PATH}`;
       console.log("Submitting to backend:", { url: submitUrl, body });
@@ -303,7 +298,7 @@ export default function Index() {
         headers: {
           "Content-Type": "application/json",
           // use the same id for idempotency to match backend expectations
-          "X-Idempotency-Key": `trial_${Math.random().toString(36).slice(2)}_${Date.now()}`,
+          "X-Idempotency-Key": `trials_${Math.random().toString(36).slice(2)}_${Date.now()}`,
           "X-Auth-Token": token ?? "",
         },
         body: JSON.stringify(body),
@@ -372,11 +367,36 @@ export default function Index() {
       setSending(true);
       const basketId = currentBasketId || String(uuid.v4());
       setCurrentBasketId(basketId);
-      // Submit each item individually to the existing endpoint with shared bundleId
-      for (const item of currentBasket) {
-        await submitToBackend(item, { silent: true });
+      // Build batch and submit once
+      const trials = await Promise.all(
+        currentBasket.map(async (item) => ({
+          sku: await deriveSku(item.scannedCode),
+          storeCode: (user?.storeCode || DEFAULT_FALLBACK_STORE).toUpperCase(),
+          timestamp: new Date().toISOString(),
+          feedback: item.feedback,
+          sessionId: null,
+          scannedBy: user?.email || "app-user",
+          bundleId: basketId,
+        }))
+      );
+      const submitUrl = `${BACKEND_BASE_URL}${BACKEND_POST_PATH}`;
+      const token = await SecureStore.getItemAsync('auth_token');
+      const res = await fetch(submitUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Idempotency-Key": `trials_${basketId}`,
+          "X-Auth-Token": token ?? "",
+        },
+        body: JSON.stringify({ trials }),
+      });
+      if (!res.ok) {
+        const status = res.status;
+        const errorText = await res.text();
+        console.log("batch submit error", { status, errorText });
+        throw new Error(status >= 500 ? "Server error – try later" : `Submit failed (${status})`);
       }
-      setToast(`Submitted ${currentBasket.length} items`);
+      setToast(`Submitted ${trials.length} items`);
       setTimeout(() => setToast(null), 1500);
       // Save to local context for home screen listing
       addBasket(currentBasket);
