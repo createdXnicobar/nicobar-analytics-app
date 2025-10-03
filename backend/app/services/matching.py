@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 async def link_trials_to_purchases_for_date(
     db: AsyncIOMotorDatabase,
     date_str: str,
-    window_hours: int = 8,
+    window_hours: int = 2,
     matching_version: str = "1.0.0",
 ):
     logger.info(f"Starting trial-purchase matching for date: {date_str} (window: {window_hours}h)")
