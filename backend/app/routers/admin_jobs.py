@@ -12,7 +12,7 @@ from app.services.aggregation import build_insights_for_date
 logger = get_logger(__name__)
 router = APIRouter(prefix="/jobs")
 
-def _require_admin(x_admin_token: str | None = Header(default=None)):
+def _require_admin(x_admin_token: str = Header(...)):
     if settings.ADMIN_TOKEN and x_admin_token != settings.ADMIN_TOKEN:
         logger.warning("Unauthorized admin access attempt")
         raise HTTPException(status_code=401, detail="Unauthorized")
