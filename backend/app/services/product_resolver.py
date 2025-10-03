@@ -1,10 +1,11 @@
 # app/services/product_resolver.py
-import logging, httpx
+import httpx
 from typing import Optional
 from pydantic import BaseModel
 from app.core.config import settings
+from app.core.logging_config import get_logger
 
-logger = logging.getLogger("product_resolver")
+logger = get_logger(__name__)
 
 class ProductSnapshot(BaseModel):
     title: Optional[str] = None
@@ -28,28 +29,30 @@ async def fetch_product_by_sku(sku: str) -> Optional[ProductSnapshot]:
     Best-effort fetch. Never raises; returns None if upstream is unavailable
     or the SKU is unknown or the payload is missing fields.
     """
+    logger.debug(f"Fetching product information for SKU: {sku}")
     url = f"{settings.NICOBAR_API_BASE}/api/getProductsbySKU"
+    
     try:
         async with httpx.AsyncClient(timeout=4.0) as client:
             resp = await client.get(url, params={"sku": sku})
     except Exception as e:
-        logger.warning("product_resolver.http_error", exc=repr(e))
+        logger.warning(f"HTTP error fetching product for SKU {sku}: {repr(e)}")
         return None
 
     if resp.status_code != 200:
-        logger.info("product_resolver.non_200", status=resp.status_code, sku=sku)
+        logger.info(f"Non-200 response for SKU {sku}: status {resp.status_code}")
         return None
 
     try:
         body = resp.json()
     except ValueError as e:
-        logger.warning("product_resolver.bad_json", exc=repr(e))
+        logger.warning(f"Invalid JSON response for SKU {sku}: {repr(e)}")
         return None
 
     data = body.get("data") or {}  # <- key change: coalesce None to {}
     # If data is empty/None, just return None (unknown SKU)
     if not isinstance(data, dict) or not data:
-        logger.info("product_resolver.no_data", sku=sku)
+        logger.info(f"No product data found for SKU: {sku}")
         return None
 
     attr = data.get("attributes") or {}
@@ -77,6 +80,8 @@ async def fetch_product_by_sku(sku: str) -> Optional[ProductSnapshot]:
 
     # If literally nothing meaningful, treat as not found
     if not any([snap.title, snap.size, snap.color, snap.category, snap.imageUrl]):
+        logger.debug(f"Product snapshot for SKU {sku} contains no meaningful data")
         return None
 
+    logger.debug(f"Successfully resolved product for SKU {sku}: {snap.title}")
     return snap

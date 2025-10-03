@@ -1,4 +1,8 @@
 from pydantic_settings import BaseSettings
+import logging
+
+# Use basic logging here since logging_config imports this module
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     APP_NAME: str 
@@ -15,4 +19,11 @@ class Settings(BaseSettings):
         env_file = ".env"
         extra = "ignore" # ignores any extra env vars defined in .env
 
-settings = Settings()
+try:
+    settings = Settings()
+    logger.info(f"Configuration loaded successfully for environment: {settings.ENV}")
+    logger.debug(f"App name: {settings.APP_NAME}")
+    logger.debug(f"Database name: {settings.DB_NAME}")
+except Exception as e:
+    logger.error(f"Failed to load configuration: {e}")
+    raise

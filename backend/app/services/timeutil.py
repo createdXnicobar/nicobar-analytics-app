@@ -1,7 +1,9 @@
 # app/services/timeutil.py
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from app.core.logging_config import get_logger
 
+logger = get_logger(__name__)
 IST = ZoneInfo("Asia/Kolkata")
 
 def utc_now() -> datetime:
@@ -9,9 +11,14 @@ def utc_now() -> datetime:
 
 def to_utc(dt: datetime) -> datetime:
     """Coerce any datetime to UTC. If naive, assume it's IST and attach IST tz first."""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=IST)
-    return dt.astimezone(timezone.utc)
+    try:
+        if dt.tzinfo is None:
+            logger.debug("Converting naive datetime to UTC, assuming IST")
+            dt = dt.replace(tzinfo=IST)
+        return dt.astimezone(timezone.utc)
+    except Exception as e:
+        logger.error(f"Error converting datetime to UTC: {dt}, error: {e}")
+        raise
 
 def ist_day_bounds(date_str: str) -> tuple[datetime, datetime]:
     """
