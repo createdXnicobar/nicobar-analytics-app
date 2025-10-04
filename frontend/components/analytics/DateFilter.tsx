@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Platform, Dimensions } from 'react-native';
 import { useState } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -15,6 +15,7 @@ export default function DateFilter({
   onDateRangeSelect, 
   currentRange 
 }: DateFilterProps) {
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
   const [showCustom, setShowCustom] = useState(false);
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [endDate, setEndDate] = useState<Date>(new Date());
@@ -32,6 +33,11 @@ export default function DateFilter({
     const msPerDay = 24 * 60 * 60 * 1000;
     return Math.max(1, Math.round((bUTC - aUTC) / msPerDay) + 1);
   };
+
+  // Helpers for 31-day clamping and today bound
+  const MS_DAY = 24 * 60 * 60 * 1000;
+  const today = new Date();
+  today.setHours(23,59,59,999);
 
   const dateOptions = [
     { label: 'Today', days: 1 },
@@ -57,7 +63,7 @@ export default function DateFilter({
   return (
     <Modal visible={visible} transparent animationType="slide">
       <View style={styles.overlay}>
-        <View style={styles.container}>
+        <View style={[styles.container, { width: Math.min(screenWidth - 24, 520), maxHeight: screenHeight - 100 }]}>
           <View style={styles.header}>
             <Text style={styles.title}>Select Date Range</Text>
             <TouchableOpacity onPress={onClose}>
@@ -94,10 +100,10 @@ export default function DateFilter({
             {showCustom && (
               <View style={styles.customContainer}>
                 <View style={styles.customRow}>
-                  <TouchableOpacity style={styles.pill} onPress={() => setShowStartPicker(true)}>
+                  <TouchableOpacity style={styles.pill} onPress={() => { setShowStartPicker(true); setShowEndPicker(false); }}>
                     <Text style={styles.pillText}>Start: {formatIST(startDate)}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.pill} onPress={() => setShowEndPicker(true)}>
+                  <TouchableOpacity style={styles.pill} onPress={() => { setShowEndPicker(true); setShowStartPicker(false); }}>
                     <Text style={styles.pillText}>End: {formatIST(endDate)}</Text>
                   </TouchableOpacity>
                 </View>
@@ -106,7 +112,7 @@ export default function DateFilter({
                 </TouchableOpacity>
 
                 {(showStartPicker || showEndPicker) && (
-                  <View style={{ marginTop: 8 }}>
+                  <View style={styles.pickerContainer}>
                     {showStartPicker && (
                       <DateTimePicker
                         value={startDate}
@@ -115,7 +121,9 @@ export default function DateFilter({
                         themeVariant={'light'}
                         textColor={'#111' as any}
                         onChange={(e, d) => { setShowStartPicker(Platform.OS === 'ios'); if (d) setStartDate(d); }}
-                        maximumDate={endDate}
+                        // Start cannot be after End or after today; cannot be earlier than End - 30 days
+                        maximumDate={new Date(Math.min(endDate.getTime(), today.getTime()))}
+                        minimumDate={new Date(endDate.getTime() - 30 * MS_DAY)}
                       />
                     )}
                     {showEndPicker && (
@@ -126,7 +134,9 @@ export default function DateFilter({
                         themeVariant={'light'}
                         textColor={'#111' as any}
                         onChange={(e, d) => { setShowEndPicker(Platform.OS === 'ios'); if (d) setEndDate(d); }}
+                        // End cannot be before Start; cannot be after today or Start + 30 days
                         minimumDate={startDate}
+                        maximumDate={new Date(Math.min(today.getTime(), startDate.getTime() + 30 * MS_DAY))}
                       />
                     )}
                   </View>
@@ -203,9 +213,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 8,
+    flexWrap: 'wrap',
   },
   pill: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '48%',
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 24,
@@ -227,5 +239,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#fff',
     fontWeight: '700',
+  },
+  pickerContainer: {
+    marginTop: 8,
+    alignSelf: 'stretch',
+    paddingHorizontal: 4,
   },
 });
