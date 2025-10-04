@@ -85,3 +85,44 @@ async def fetch_product_by_sku(sku: str) -> Optional[ProductSnapshot]:
 
     logger.debug(f"Successfully resolved product for SKU {sku}: {snap.title}")
     return snap
+
+async def fetch_products_by_skus(skus: list[str]) -> dict[str, Optional[ProductSnapshot]]:
+    """
+    Batch fetch multiple products by SKUs. Returns a dict mapping SKU to ProductSnapshot.
+    More efficient than individual calls for multiple SKUs.
+    """
+    if not skus:
+        return {}
+    
+    unique_skus = list(set(skus))
+    logger.debug(f"Batch fetching product information for {len(unique_skus)} unique SKUs")
+    
+    results: dict[str, Optional[ProductSnapshot]] = {}
+    
+    # For now, we'll use the individual endpoint in parallel
+    # This could be optimized further if the API supports batch endpoints
+    import asyncio
+    
+    async def fetch_single(sku: str) -> tuple[str, Optional[ProductSnapshot]]:
+        result = await fetch_product_by_sku(sku)
+        return sku, result
+    
+    try:
+        # Use asyncio.gather to fetch all SKUs in parallel
+        tasks = [fetch_single(sku) for sku in unique_skus]
+        fetch_results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in fetch_results:
+            if isinstance(result, Exception):
+                logger.warning(f"Exception in batch product fetch: {result}")
+                continue
+            sku, snapshot = result
+            results[sku] = snapshot
+            
+        logger.debug(f"Batch product fetch completed. Found {sum(1 for v in results.values() if v is not None)} products out of {len(unique_skus)} SKUs")
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error in batch product fetch: {str(e)}", exc_info=True)
+        # Fallback: return empty results for all SKUs
+        return {sku: None for sku in unique_skus}

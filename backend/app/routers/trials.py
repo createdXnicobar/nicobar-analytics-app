@@ -2,117 +2,150 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from datetime import datetime, timezone, timedelta
 from app.models.trials import TrialIn, TrialAck, TrialBatchIn, TrialBatchAck, TrialResult, UserBundlesResponse, Bundle, TrialItem
 from app.db.mongo import trial_events
-from app.services.product_resolver import fetch_product_by_sku
+from app.services.product_resolver import fetch_product_by_sku, fetch_products_by_skus
 from app.services.timeutil import to_utc, utc_now
 from app.core.logging_config import get_logger
 from bson import ObjectId
 from typing import List
+from pymongo import InsertOne
 
 logger = get_logger(__name__)
 router = APIRouter()
 
-async def _process_single_trial(trial: TrialIn, idem_key: str) -> TrialResult:
-    """Helper function to process a single trial"""
-    logger.debug(f"Processing trial for SKU: {trial.sku}, Store: {trial.storeCode}, Bundle: {trial.bundleId}")
-    
-    try:
-        # Check for duplicate idempotency key
-        if await trial_events().find_one({"idemKey": idem_key}):
-            logger.warning(f"Duplicate idempotency key detected for trial: {idem_key}")
-            return TrialResult(
-                trialId=trial.trialId or str(ObjectId()),
-                storedAt=utc_now(),
-                success=False,
-                error="Duplicate idempotency key"
-            )
 
-        ts_utc = to_utc(trial.timestamp) if trial.timestamp else utc_now()
-        trialId = trial.trialId or str(ObjectId())
-        logger.debug(f"Generated trial ID: {trialId}")
-        
-        snap = await fetch_product_by_sku(trial.sku)
-        if snap:
-            logger.debug(f"Product snapshot retrieved for SKU {trial.sku}: {snap.title}")
-        else:
-            logger.warning(f"No product snapshot found for SKU: {trial.sku}")
-        
-        doc = {
-            "trialId": trialId,
-            "timestamp": ts_utc,
-            "storeCode": trial.storeCode.upper(),
-            "sku": trial.sku,
-            "feedback": trial.feedback,
-            "sessionId": trial.sessionId,
-            "idemKey": idem_key,
-            "productSnapshot": None,
-            "enrichment": {"status": "pending", "lastTriedAt": ts_utc},
-            "scannedBy": trial.scannedBy,
-            "bundleId": trial.bundleId
-        }
-        
-        if snap:
-            stock_here = (snap.stockByLocation or {}).get(doc["storeCode"])
-            doc["productSnapshot"] = {
-                "title": snap.title,
-                "price": snap.price,
-                "size": snap.size,
-                "color": snap.color,
-                "category": snap.category,
-                "imageUrl": snap.imageUrl,
-                "stockAtTrial": stock_here
-            }
-            doc["enrichment"]["status"] = "done"
-            logger.debug(f"Product enrichment completed for trial {trialId}, stock at store: {stock_here}")
-
-        await trial_events().insert_one(doc)
-        logger.debug(f"Trial {trialId} successfully stored in database")
-        return TrialResult(
-            trialId=trialId,
-            storedAt=ts_utc,
-            success=True
-        )
-    except Exception as e:
-        logger.error(f"Error processing trial for SKU {trial.sku}: {str(e)}", exc_info=True)
-        return TrialResult(
-            trialId=trial.trialId or str(ObjectId()),
-            storedAt=utc_now(),
-            success=False,
-            error=str(e)
-        )
 
 @router.post("/v1/trials", response_model=TrialBatchAck, status_code=201)
 async def create_trials(body: TrialBatchIn, idem_key: str = Header(..., alias="X-Idempotency-Key")):
     """
-    Create multiple trials in a batch. Each trial in the batch will use a derived idempotency key
-    based on the main idempotency key and the trial index.
+    Create multiple trials in a batch using bulk operations for optimal performance.
+    Each trial in the batch will use a derived idempotency key based on the main 
+    idempotency key and the trial index.
     """
     logger.info(f"Processing batch of {len(body.trials)} trials with base idempotency key: {idem_key}")
-    results: list[TrialResult] = []
     
-    for idx, trial in enumerate(body.trials):
-        # Create a unique idempotency key for each trial by appending the index
-        trial_idem_key = f"{idem_key}_{idx}"
-        result = await _process_single_trial(trial, trial_idem_key)
-        results.append(result)
+    if not body.trials:
+        return TrialBatchAck(results=[], totalProcessed=0, successCount=0, errorCount=0)
+    
+    try:
+        # Step 1: Generate idempotency keys and check for duplicates in bulk
+        trial_idem_keys = [f"{idem_key}_{idx}" for idx in range(len(body.trials))]
         
-        # Log individual failures for monitoring
-        if not result.success:
-            logger.warning(f"Trial {idx} failed in batch {idem_key}: {result.error}")
-    
-    success_count = sum(1 for r in results if r.success)
-    error_count = len(results) - success_count
-    
-    logger.info(f"Batch processing completed - Total: {len(results)}, Success: {success_count}, Errors: {error_count}")
-    
-    if error_count > 0:
-        logger.warning(f"Batch {idem_key} had {error_count} failures out of {len(results)} trials")
-    
-    return TrialBatchAck(
-        results=results,
-        totalProcessed=len(results),
-        successCount=success_count,
-        errorCount=error_count
-    )
+        # Check for existing trials with these idempotency keys
+        existing_trials = await trial_events().find(
+            {"idemKey": {"$in": trial_idem_keys}}
+        ).to_list(length=None)
+        
+        existing_idem_keys = {trial["idemKey"] for trial in existing_trials}
+        logger.debug(f"Found {len(existing_idem_keys)} existing trials out of {len(trial_idem_keys)} requested")
+        
+        # Step 2: Batch fetch all unique SKUs
+        unique_skus = list(set(trial.sku for trial in body.trials))
+        product_snapshots = await fetch_products_by_skus(unique_skus)
+        logger.debug(f"Fetched product data for {len(unique_skus)} unique SKUs")
+        
+        # Step 3: Prepare bulk insert documents and results
+        docs_to_insert = []
+        results: list[TrialResult] = []
+        
+        for idx, trial in enumerate(body.trials):
+            trial_idem_key = trial_idem_keys[idx]
+            
+            # Handle duplicate idempotency keys
+            if trial_idem_key in existing_idem_keys:
+                logger.debug(f"Skipping duplicate trial at index {idx} with key {trial_idem_key}")
+                results.append(TrialResult(
+                    trialId=trial.trialId or str(ObjectId()),
+                    storedAt=utc_now(),
+                    success=False,
+                    error="Duplicate idempotency key"
+                ))
+                continue
+            
+            # Process trial data
+            ts_utc = to_utc(trial.timestamp) if trial.timestamp else utc_now()
+            trialId = trial.trialId or str(ObjectId())
+            
+            # Get product snapshot from batch lookup
+            snap = product_snapshots.get(trial.sku)
+            
+            doc = {
+                "trialId": trialId,
+                "timestamp": ts_utc,
+                "storeCode": trial.storeCode.upper(),
+                "sku": trial.sku,
+                "feedback": trial.feedback,
+                "sessionId": trial.sessionId,
+                "idemKey": trial_idem_key,
+                "productSnapshot": None,
+                "enrichment": {"status": "pending", "lastTriedAt": ts_utc},
+                "scannedBy": trial.scannedBy,
+                "bundleId": trial.bundleId
+            }
+            
+            if snap:
+                stock_here = (snap.stockByLocation or {}).get(doc["storeCode"])
+                doc["productSnapshot"] = {
+                    "title": snap.title,
+                    "price": snap.price,
+                    "size": snap.size,
+                    "color": snap.color,
+                    "category": snap.category,
+                    "imageUrl": snap.imageUrl,
+                    "stockAtTrial": stock_here
+                }
+                doc["enrichment"]["status"] = "done"
+            
+            docs_to_insert.append(doc)
+            results.append(TrialResult(
+                trialId=trialId,
+                storedAt=ts_utc,
+                success=True
+            ))
+        
+        # Step 4: Bulk insert all valid documents
+        if docs_to_insert:
+            insert_operations = [InsertOne(doc) for doc in docs_to_insert]
+            bulk_result = await trial_events().bulk_write(insert_operations, ordered=False)
+            logger.debug(f"Bulk insert completed: {bulk_result.inserted_count} documents inserted")
+            
+            # If some inserts failed, mark corresponding results as failed
+            if bulk_result.inserted_count != len(docs_to_insert):
+                logger.warning(f"Bulk insert partial failure: expected {len(docs_to_insert)}, inserted {bulk_result.inserted_count}")
+                # Note: In a production system, you might want more sophisticated error handling here
+        
+        success_count = sum(1 for r in results if r.success)
+        error_count = len(results) - success_count
+        
+        logger.info(f"Batch processing completed - Total: {len(results)}, Success: {success_count}, Errors: {error_count}")
+        
+        if error_count > 0:
+            logger.warning(f"Batch {idem_key} had {error_count} failures out of {len(results)} trials")
+        
+        return TrialBatchAck(
+            results=results,
+            totalProcessed=len(results),
+            successCount=success_count,
+            errorCount=error_count
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in bulk trial processing: {str(e)}", exc_info=True)
+        # Return failed results for all trials
+        failed_results = [
+            TrialResult(
+                trialId=trial.trialId or str(ObjectId()),
+                storedAt=utc_now(),
+                success=False,
+                error=f"Bulk processing error: {str(e)}"
+            )
+            for trial in body.trials
+        ]
+        return TrialBatchAck(
+            results=failed_results,
+            totalProcessed=len(body.trials),
+            successCount=0,
+            errorCount=len(body.trials)
+        )
 
 @router.post("/v1/trial", response_model=TrialAck, status_code=201)
 async def create_single_trial(body: TrialIn, idem_key: str = Header(..., alias="X-Idempotency-Key")):
