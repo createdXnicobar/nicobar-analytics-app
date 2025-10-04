@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import * as SecureStore from 'expo-secure-store';
+import { useIsFocused } from '@react-navigation/native';
 
 const BACKEND_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
 
 export default function Home() {
   const router = useRouter();
   const { user } = useAuth();
+  const isFocused = useIsFocused();
   const [showFilter, setShowFilter] = useState(false);
   const [days, setDays] = useState<number>(1);
   const [remoteBundles, setRemoteBundles] = useState<any[]>([]);
@@ -19,33 +21,37 @@ export default function Home() {
   // Show bundles from backend instead of session-local context
   const filtered = useMemo(() => remoteBundles, [remoteBundles]);
 
-  // Fetch remote bundles for logged-in user
-  useEffect(() => {
-    const fetchBundles = async () => {
-      if (!user?.email) { setRemoteBundles([]); return; }
-      try {
-        setLoadingBundles(true);
-        const token = await SecureStore.getItemAsync('auth_token');
-        const url = `${BACKEND_BASE_URL}/v1/bundles/${encodeURIComponent(user.email)}?days=${Math.min(Math.max(days, 1), 31)}`;
-        const res = await fetch(url, { headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token ?? '' } });
-        if (!res.ok) {
-          console.log('fetch bundles error', res.status, await res.text());
-          setRemoteBundles([]);
-          return;
-        }
-        const json = await res.json();
-        setRemoteBundles(Array.isArray(json?.bundles) ? json.bundles : []);
-        setTotalBundles(typeof json?.totalBundles === 'number' ? json.totalBundles : (Array.isArray(json?.bundles) ? json.bundles.length : 0));
-      } catch (e) {
-        console.log('fetch bundles exception', e);
+  // Fetch remote bundles for logged-in user; re-fetch on focus to ensure latest
+  const fetchBundles = useCallback(async () => {
+    if (!user?.email) { setRemoteBundles([]); setTotalBundles(0); return; }
+    try {
+      setLoadingBundles(true);
+      const token = await SecureStore.getItemAsync('auth_token');
+      const url = `${BACKEND_BASE_URL}/v1/bundles/${encodeURIComponent(user.email)}?days=${Math.min(Math.max(days, 1), 31)}`;
+      const res = await fetch(url, { headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token ?? '' } });
+      if (!res.ok) {
+        console.log('fetch bundles error', res.status, await res.text());
         setRemoteBundles([]);
         setTotalBundles(0);
-      } finally {
-        setLoadingBundles(false);
+        return;
       }
-    };
-    void fetchBundles();
+      const json = await res.json();
+      setRemoteBundles(Array.isArray(json?.bundles) ? json.bundles : []);
+      setTotalBundles(typeof json?.totalBundles === 'number' ? json.totalBundles : (Array.isArray(json?.bundles) ? json.bundles.length : 0));
+    } catch (e) {
+      console.log('fetch bundles exception', e);
+      setRemoteBundles([]);
+      setTotalBundles(0);
+    } finally {
+      setLoadingBundles(false);
+    }
   }, [user?.email, days]);
+
+  useEffect(() => {
+    if (isFocused) {
+      void fetchBundles();
+    }
+  }, [isFocused, fetchBundles]);
 
   // Basket preview modal state
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -111,18 +117,34 @@ export default function Home() {
   };
   raw?: unknown;
 };
-
-  type Bundle = {
-    id: string;
-    name: string;
-    items: ProductPayload[];
-  };
     
   // Each bundle card
+  // Backend sends UTC timestamps as strings without a timezone suffix (e.g. 2025-10-04T13:49:54.148000)
+  // JS Date treats such strings as local time. Normalize to UTC by appending 'Z' when missing
+  // and trimming microseconds to milliseconds for compatibility.
   const toIST = (iso: string | Date | undefined) => {
     if (!iso) return '';
-    const d = typeof iso === 'string' ? new Date(iso) : iso;
-    return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    let d: Date;
+    if (typeof iso === 'string') {
+      let s = iso.trim();
+      // Trim microseconds to milliseconds if present
+      s = s.replace(/(\.\d{3})\d+$/, '$1');
+      // If no timezone info, assume UTC and append 'Z'
+      if (!/[zZ]$/.test(s) && !/[+-]\d{2}:\d{2}$/.test(s)) {
+        s = `${s}Z`;
+      }
+      d = new Date(s);
+    } else {
+      d = iso;
+    }
+    return d.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   const renderBundle = ({ item, index }: { item: any; index: number }) => (
@@ -130,7 +152,7 @@ export default function Home() {
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
         <Text style={styles.bundleName}>{`Bundle ${index + 1}`}</Text>
         <View style={{ alignItems: 'flex-end' }}>
-          {item?.scanDate ? <Text style={styles.bundleDate}>{toIST(item.scanDate)}</Text> : null}
+          {<Text style={styles.bundleDate}>{toIST(item.scanDate)}</Text>}
           <Text style={styles.bundleCount}>{(item?.items?.length ?? 0)} item{(item?.items?.length ?? 0) === 1 ? '' : 's'}</Text>
         </View>
       </View>
@@ -163,6 +185,8 @@ export default function Home() {
       ListHeaderComponent={renderHeader}
       ListFooterComponent={renderFooter}
       contentContainerStyle={styles.container}
+      refreshing={loadingBundles}
+      onRefresh={fetchBundles}
     />
 
     {/* Basket preview modal */}
