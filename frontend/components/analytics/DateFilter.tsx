@@ -21,6 +21,18 @@ export default function DateFilter({
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
+  // Format a JS Date as YYYY-MM-DD in IST regardless of device timezone
+  const formatIST = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  // Compute inclusive day span based on calendar dates in IST
+  const diffDaysInclusiveIST = (a: Date, b: Date) => {
+    const aStr = formatIST(a);
+    const bStr = formatIST(b);
+    const aUTC = new Date(`${aStr}T00:00:00Z`).getTime();
+    const bUTC = new Date(`${bStr}T00:00:00Z`).getTime();
+    const msPerDay = 24 * 60 * 60 * 1000;
+    return Math.max(1, Math.round((bUTC - aUTC) / msPerDay) + 1);
+  };
+
   const dateOptions = [
     { label: 'Today', days: 1 },
     { label: 'Last 7 days', days: 7 },
@@ -29,23 +41,17 @@ export default function DateFilter({
   ];
 
   const handleSelect = (days: number) => {
-    const today = new Date().toISOString().split('T')[0];
-    onDateRangeSelect({ date: today, days });
+    const todayIST = formatIST(new Date());
+    onDateRangeSelect({ date: todayIST, days });
   };
 
   const applyCustom = () => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    // Ensure start <= end
-    if (start > end) {
-      const tmp = new Date(start);
-      setStartDate(end);
-      setEndDate(tmp);
-    }
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const diffDays = Math.max(1, Math.floor((end.setHours(23,59,59,999) - start.setHours(0,0,0,0)) / msPerDay) + 1);
-    const endStr = new Date(endDate).toISOString().split('T')[0];
-    onDateRangeSelect({ date: endStr, days: diffDays });
+    let start = new Date(startDate);
+    let end = new Date(endDate);
+    if (start > end) { const tmp = start; start = end; end = tmp; setStartDate(start); setEndDate(end); }
+    const diffDays = diffDaysInclusiveIST(start, end);
+    const endStrIST = formatIST(end);
+    onDateRangeSelect({ date: endStrIST, days: diffDays });
   };
 
   return (
@@ -89,10 +95,10 @@ export default function DateFilter({
               <View style={styles.customContainer}>
                 <View style={styles.customRow}>
                   <TouchableOpacity style={styles.pill} onPress={() => setShowStartPicker(true)}>
-                    <Text style={styles.pillText}>Start: {startDate.toISOString().split('T')[0]}</Text>
+                    <Text style={styles.pillText}>Start: {formatIST(startDate)}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.pill} onPress={() => setShowEndPicker(true)}>
-                    <Text style={styles.pillText}>End: {endDate.toISOString().split('T')[0]}</Text>
+                    <Text style={styles.pillText}>End: {formatIST(endDate)}</Text>
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity style={styles.applyBtn} onPress={applyCustom}>
@@ -106,6 +112,8 @@ export default function DateFilter({
                         value={startDate}
                         mode="date"
                         display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                        themeVariant={'light'}
+                        textColor={'#111' as any}
                         onChange={(e, d) => { setShowStartPicker(Platform.OS === 'ios'); if (d) setStartDate(d); }}
                         maximumDate={endDate}
                       />
@@ -115,6 +123,8 @@ export default function DateFilter({
                         value={endDate}
                         mode="date"
                         display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                        themeVariant={'light'}
+                        textColor={'#111' as any}
                         onChange={(e, d) => { setShowEndPicker(Platform.OS === 'ios'); if (d) setEndDate(d); }}
                         minimumDate={startDate}
                       />
@@ -140,8 +150,8 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: 'white',
     borderRadius: 12,
-    width: '90%',
-    maxWidth: 400,
+    width: '92%',
+    maxWidth: 420,
   },
   header: {
     flexDirection: 'row',
@@ -160,7 +170,9 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   optionsContainer: {
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 20,
   },
   option: {
     padding: 16,

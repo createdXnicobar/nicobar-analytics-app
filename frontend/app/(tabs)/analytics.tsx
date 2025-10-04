@@ -12,8 +12,10 @@ export default function AnalyticsScreen() {
   const [storeCode] = useState((user?.storeCode || "DKN").toUpperCase());
   const [showDateFilter, setShowDateFilter] = useState(false);
 
+  // Always use today's date in IST (Asia/Kolkata) for insights queries
+  const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
   const [dateRange, setDateRange] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: todayIST,
     days: 7
   });
 
@@ -25,7 +27,9 @@ export default function AnalyticsScreen() {
   );
 
   const handleDateRangeChange = (newDateRange: { date: string; days: number }) => {
-    setDateRange(newDateRange);
+    // Normalize to IST in case a different timezone string is passed
+    const normalizedDate = new Date(newDateRange.date + 'T00:00:00Z').toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    setDateRange({ date: normalizedDate, days: newDateRange.days });
     setShowDateFilter(false);
   };
 
