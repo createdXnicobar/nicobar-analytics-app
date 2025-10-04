@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useBundle } from '../../context/BundleContext';
 import { useAuth } from '@/context/AuthContext';
 import * as SecureStore from 'expo-secure-store';
 
@@ -10,7 +9,6 @@ const BACKEND_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
 
 export default function Home() {
   const router = useRouter();
-  const { bundles } = useBundle();
   const { user } = useAuth();
   const [showFilter, setShowFilter] = useState(false);
   const [days, setDays] = useState<number>(1);

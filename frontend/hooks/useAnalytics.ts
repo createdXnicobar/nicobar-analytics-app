@@ -39,8 +39,7 @@ const useAnalytics = (storeCode: string, date: string, days: number) => {
       setError(null);
       
       const requestUrl = `${API_BASE_URL}/v1/insights/store/${storeCode}`;
-      console.log('🌐 Making request to:', requestUrl);
-      console.log('📋 With params:', { date, days });
+      // console.log('🌐 Making request to:', requestUrl);
 
       const response = await axios.get(requestUrl, {
         params: { date, days },
@@ -48,7 +47,7 @@ const useAnalytics = (storeCode: string, date: string, days: number) => {
         timeout: 10000
       });
 
-      console.log('✅ Success! Response status:', response.status);
+      // console.log('✅ Success! Response status:', response.status);
       
       setData(response.data);
     } catch (err: any) {
@@ -60,7 +59,6 @@ const useAnalytics = (storeCode: string, date: string, days: number) => {
         setError(`Server Error: ${err.response.status} - ${err.response.statusText}`);
       } else if (err.request) {
         // Request made but no response received
-        console.log('📡 No response received. Request object:', err.request);
         console.log('📡 Request details:', {
           url: err.config?.url,
           method: err.config?.method,
@@ -69,7 +67,6 @@ const useAnalytics = (storeCode: string, date: string, days: number) => {
         setError('Connection timeout - Server took too long to respond');
       } else {
         // Error setting up the request
-        console.log('⚙️ Request setup error:', err.message);
         setError(`Request Error: ${err.message}`);
       }
     } finally {

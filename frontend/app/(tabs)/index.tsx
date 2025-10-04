@@ -113,7 +113,7 @@ export default function Index() {
     })();
 
     // Log resolved API base once for troubleshooting
-    console.log("API base URL:", BACKEND_BASE_URL, "Platform:", Platform.OS);
+    // console.log("API base URL:", BACKEND_BASE_URL, "Platform:", Platform.OS);
 
     return () => {
       if (scanTimeoutRef.current) {
@@ -230,7 +230,7 @@ export default function Index() {
   const buildProductUrlFromScan = (data: string, type?: string): string => {
     const raw = (data || '').trim();
     // If the scanner reported a non-QR symbology, treat payload as a plain SKU
-    if (type && type.toLowerCase() !== 'qr') {
+    if (type) {
       return `${PUBLIC_PRODUCT_API}${encodeURIComponent(raw)}`;
     }
     // Otherwise, if it looks like a URL, use as-is; if not, treat as SKU
@@ -291,7 +291,7 @@ export default function Index() {
       const body = { trials: [trial] };
 
       const submitUrl = `${BACKEND_BASE_URL}${BACKEND_POST_PATH}`;
-      console.log("Submitting to backend:", { url: submitUrl, body });
+      // console.log("Submitting to backend:", { url: submitUrl, body });
       const token = await SecureStore.getItemAsync('auth_token');
       const res = await fetch(submitUrl, {
         method: "POST",
@@ -458,7 +458,7 @@ export default function Index() {
             style={StyleSheet.absoluteFillObject}
             barcodeScannerSettings={{
               barcodeTypes: [
-                "qr", "pdf417", "aztec", "ean13", "ean8", "upc_a", 
+                "qr", "pdf417", "aztec", "datamatrix", "ean13", "ean8", "upc_a", 
                 "upc_e", "code39", "code93", "code128", "codabar", "itf14",
               ],
             }}
