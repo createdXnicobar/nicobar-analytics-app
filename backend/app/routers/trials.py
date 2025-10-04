@@ -8,6 +8,7 @@ from app.core.logging_config import get_logger
 from bson import ObjectId
 from typing import List
 from pymongo import InsertOne
+from pymongo.errors import BulkWriteError
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -19,37 +20,48 @@ async def create_trials(body: TrialBatchIn, idem_key: str = Header(..., alias="X
     """
     Create multiple trials in a batch using bulk operations for optimal performance.
     Each trial in the batch will use a derived idempotency key based on the main 
-    idempotency key and the trial index.
+    idempotency key and the trial index. Individual trial errors are isolated and 
+    don't affect the processing of other trials in the batch.
     """
     logger.info(f"Processing batch of {len(body.trials)} trials with base idempotency key: {idem_key}")
     
     if not body.trials:
         return TrialBatchAck(results=[], totalProcessed=0, successCount=0, errorCount=0)
     
+    # Step 1: Generate idempotency keys and check for duplicates in bulk
+    trial_idem_keys = [f"{idem_key}_{idx}" for idx in range(len(body.trials))]
+    
+    # Safe duplicate check with error handling
+    existing_idem_keys = set()
     try:
-        # Step 1: Generate idempotency keys and check for duplicates in bulk
-        trial_idem_keys = [f"{idem_key}_{idx}" for idx in range(len(body.trials))]
-        
-        # Check for existing trials with these idempotency keys
         existing_trials = await trial_events().find(
             {"idemKey": {"$in": trial_idem_keys}}
         ).to_list(length=None)
-        
         existing_idem_keys = {trial["idemKey"] for trial in existing_trials}
         logger.debug(f"Found {len(existing_idem_keys)} existing trials out of {len(trial_idem_keys)} requested")
-        
-        # Step 2: Batch fetch all unique SKUs
+    except Exception as e:
+        logger.warning(f"Error checking for duplicate trials: {str(e)}")
+        # Continue processing - we'll handle duplicates at insert time
+    
+    # Step 2: Batch fetch all unique SKUs with error handling
+    product_snapshots = {}
+    try:
         unique_skus = list(set(trial.sku for trial in body.trials))
         product_snapshots = await fetch_products_by_skus(unique_skus)
         logger.debug(f"Fetched product data for {len(unique_skus)} unique SKUs")
+    except Exception as e:
+        logger.warning(f"Error fetching product snapshots: {str(e)}")
+        # Continue processing without product data
+    
+    # Step 3: Process each trial individually with error isolation
+    docs_to_insert = []
+    doc_to_result_mapping = []  # Track which result corresponds to which doc
+    results: list[TrialResult] = []
+    
+    for idx, trial in enumerate(body.trials):
+        trial_idem_key = trial_idem_keys[idx]
         
-        # Step 3: Prepare bulk insert documents and results
-        docs_to_insert = []
-        results: list[TrialResult] = []
-        
-        for idx, trial in enumerate(body.trials):
-            trial_idem_key = trial_idem_keys[idx]
-            
+        try:
             # Handle duplicate idempotency keys
             if trial_idem_key in existing_idem_keys:
                 logger.debug(f"Skipping duplicate trial at index {idx} with key {trial_idem_key}")
@@ -61,11 +73,11 @@ async def create_trials(body: TrialBatchIn, idem_key: str = Header(..., alias="X
                 ))
                 continue
             
-            # Process trial data
+            # Process trial data with individual error handling
             ts_utc = to_utc(trial.timestamp) if trial.timestamp else utc_now()
             trialId = trial.trialId or str(ObjectId())
             
-            # Get product snapshot from batch lookup
+            # Get product snapshot from batch lookup (may be None if fetch failed)
             snap = product_snapshots.get(trial.sku)
             
             doc = {
@@ -83,69 +95,99 @@ async def create_trials(body: TrialBatchIn, idem_key: str = Header(..., alias="X
             }
             
             if snap:
-                stock_here = (snap.stockByLocation or {}).get(doc["storeCode"])
-                doc["productSnapshot"] = {
-                    "title": snap.title,
-                    "price": snap.price,
-                    "size": snap.size,
-                    "color": snap.color,
-                    "category": snap.category,
-                    "imageUrl": snap.imageUrl,
-                    "stockAtTrial": stock_here
-                }
-                doc["enrichment"]["status"] = "done"
+                try:
+                    stock_here = (snap.stockByLocation or {}).get(doc["storeCode"])
+                    doc["productSnapshot"] = {
+                        "title": snap.title,
+                        "price": snap.price,
+                        "size": snap.size,
+                        "color": snap.color,
+                        "category": snap.category,
+                        "imageUrl": snap.imageUrl,
+                        "stockAtTrial": stock_here
+                    }
+                    doc["enrichment"]["status"] = "done"
+                except Exception as e:
+                    logger.warning(f"Error processing product snapshot for trial {idx}, SKU {trial.sku}: {str(e)}")
+                    # Continue with pending enrichment status
             
             docs_to_insert.append(doc)
+            doc_to_result_mapping.append(len(results))  # Track result index for this doc
             results.append(TrialResult(
                 trialId=trialId,
                 storedAt=ts_utc,
-                success=True
+                success=True  # Will be updated if insert fails
             ))
-        
-        # Step 4: Bulk insert all valid documents
-        if docs_to_insert:
-            insert_operations = [InsertOne(doc) for doc in docs_to_insert]
-            bulk_result = await trial_events().bulk_write(insert_operations, ordered=False)
-            logger.debug(f"Bulk insert completed: {bulk_result.inserted_count} documents inserted")
             
-            # If some inserts failed, mark corresponding results as failed
-            if bulk_result.inserted_count != len(docs_to_insert):
-                logger.warning(f"Bulk insert partial failure: expected {len(docs_to_insert)}, inserted {bulk_result.inserted_count}")
-                # Note: In a production system, you might want more sophisticated error handling here
-        
-        success_count = sum(1 for r in results if r.success)
-        error_count = len(results) - success_count
-        
-        logger.info(f"Batch processing completed - Total: {len(results)}, Success: {success_count}, Errors: {error_count}")
-        
-        if error_count > 0:
-            logger.warning(f"Batch {idem_key} had {error_count} failures out of {len(results)} trials")
-        
-        return TrialBatchAck(
-            results=results,
-            totalProcessed=len(results),
-            successCount=success_count,
-            errorCount=error_count
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in bulk trial processing: {str(e)}", exc_info=True)
-        # Return failed results for all trials
-        failed_results = [
-            TrialResult(
+        except Exception as e:
+            logger.error(f"Error processing trial {idx} (SKU: {trial.sku}): {str(e)}", exc_info=True)
+            results.append(TrialResult(
                 trialId=trial.trialId or str(ObjectId()),
                 storedAt=utc_now(),
                 success=False,
-                error=f"Bulk processing error: {str(e)}"
-            )
-            for trial in body.trials
-        ]
-        return TrialBatchAck(
-            results=failed_results,
-            totalProcessed=len(body.trials),
-            successCount=0,
-            errorCount=len(body.trials)
-        )
+                error=f"Processing error: {str(e)}"
+            ))
+    
+    # Step 4: Bulk insert all valid documents with proper BulkWriteError handling
+    if docs_to_insert:
+        try:
+            insert_operations = [InsertOne(doc) for doc in docs_to_insert]
+            bulk_result = await trial_events().bulk_write(insert_operations, ordered=False)
+            logger.debug(f"Bulk insert completed successfully: {bulk_result.inserted_count} documents inserted")
+            
+        except BulkWriteError as bwe:
+            # BulkWriteError is raised even when some operations succeed
+            # We need to inspect the details to handle partial success correctly
+            bulk_result = bwe.details
+            inserted_count = bulk_result.get('nInserted', 0)
+            write_errors = bulk_result.get('writeErrors', [])
+            
+            logger.info(f"Bulk insert completed with partial success: {inserted_count} inserted, {len(write_errors)} errors")
+            
+            # Create a set of failed indices for quick lookup
+            failed_indices = {error['index'] for error in write_errors}
+            
+            # Update results based on which specific operations failed
+            for doc_idx, result_idx in enumerate(doc_to_result_mapping):
+                if doc_idx in failed_indices:
+                    # Find the specific error for this index
+                    error_detail = next((e for e in write_errors if e['index'] == doc_idx), None)
+                    error_msg = "Insert failed"
+                    if error_detail:
+                        error_msg = error_detail.get('errmsg', 'Unknown insert error')
+                        # Common duplicate key error handling
+                        if error_detail.get('code') == 11000:  # Duplicate key error code
+                            error_msg = "Duplicate idempotency key"
+                    
+                    results[result_idx].success = False
+                    results[result_idx].error = error_msg
+                    logger.debug(f"Trial at doc index {doc_idx} failed: {error_msg}")
+                # else: operation succeeded, result already marked as success=True
+            
+            logger.info(f"Processed BulkWriteError: {inserted_count} successful inserts, {len(failed_indices)} failures")
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in bulk insert operation: {str(e)}", exc_info=True)
+            # Only in case of unexpected errors (connection issues, etc.) mark all as failed
+            for result_idx in doc_to_result_mapping:
+                results[result_idx].success = False
+                results[result_idx].error = f"Bulk insert error: {str(e)}"
+    
+    # Step 5: Calculate final counts and return
+    success_count = sum(1 for r in results if r.success)
+    error_count = len(results) - success_count
+    
+    logger.info(f"Batch processing completed - Total: {len(results)}, Success: {success_count}, Errors: {error_count}")
+    
+    if error_count > 0:
+        logger.warning(f"Batch {idem_key} had {error_count} failures out of {len(results)} trials")
+    
+    return TrialBatchAck(
+        results=results,
+        totalProcessed=len(results),
+        successCount=success_count,
+        errorCount=error_count
+    )
 
 @router.post("/v1/trial", response_model=TrialAck, status_code=201)
 async def create_single_trial(body: TrialIn, idem_key: str = Header(..., alias="X-Idempotency-Key")):
