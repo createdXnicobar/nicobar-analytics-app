@@ -2,103 +2,178 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from datetime import datetime, timezone, timedelta
 from app.models.trials import TrialIn, TrialAck, TrialBatchIn, TrialBatchAck, TrialResult, UserBundlesResponse, Bundle, TrialItem
 from app.db.mongo import trial_events
-from app.services.product_resolver import fetch_product_by_sku
+from app.services.product_resolver import fetch_product_by_sku, fetch_products_by_skus
 from app.services.timeutil import to_utc, utc_now
 from app.core.logging_config import get_logger
 from bson import ObjectId
 from typing import List
+from pymongo import InsertOne
+from pymongo.errors import BulkWriteError
 
 logger = get_logger(__name__)
 router = APIRouter()
 
-async def _process_single_trial(trial: TrialIn, idem_key: str) -> TrialResult:
-    """Helper function to process a single trial"""
-    logger.debug(f"Processing trial for SKU: {trial.sku}, Store: {trial.storeCode}, Bundle: {trial.bundleId}")
-    
-    try:
-        # Check for duplicate idempotency key
-        if await trial_events().find_one({"idemKey": idem_key}):
-            logger.warning(f"Duplicate idempotency key detected for trial: {idem_key}")
-            return TrialResult(
-                trialId=trial.trialId or str(ObjectId()),
-                storedAt=utc_now(),
-                success=False,
-                error="Duplicate idempotency key"
-            )
 
-        ts_utc = to_utc(trial.timestamp) if trial.timestamp else utc_now()
-        trialId = trial.trialId or str(ObjectId())
-        logger.debug(f"Generated trial ID: {trialId}")
-        
-        snap = await fetch_product_by_sku(trial.sku)
-        if snap:
-            logger.debug(f"Product snapshot retrieved for SKU {trial.sku}: {snap.title}")
-        else:
-            logger.warning(f"No product snapshot found for SKU: {trial.sku}")
-        
-        doc = {
-            "trialId": trialId,
-            "timestamp": ts_utc,
-            "storeCode": trial.storeCode.upper(),
-            "sku": trial.sku,
-            "feedback": trial.feedback,
-            "sessionId": trial.sessionId,
-            "idemKey": idem_key,
-            "productSnapshot": None,
-            "enrichment": {"status": "pending", "lastTriedAt": ts_utc},
-            "scannedBy": trial.scannedBy,
-            "bundleId": trial.bundleId
-        }
-        
-        if snap:
-            stock_here = (snap.stockByLocation or {}).get(doc["storeCode"])
-            doc["productSnapshot"] = {
-                "title": snap.title,
-                "price": snap.price,
-                "size": snap.size,
-                "color": snap.color,
-                "category": snap.category,
-                "imageUrl": snap.imageUrl,
-                "stockAtTrial": stock_here
-            }
-            doc["enrichment"]["status"] = "done"
-            logger.debug(f"Product enrichment completed for trial {trialId}, stock at store: {stock_here}")
-
-        await trial_events().insert_one(doc)
-        logger.debug(f"Trial {trialId} successfully stored in database")
-        return TrialResult(
-            trialId=trialId,
-            storedAt=ts_utc,
-            success=True
-        )
-    except Exception as e:
-        logger.error(f"Error processing trial for SKU {trial.sku}: {str(e)}", exc_info=True)
-        return TrialResult(
-            trialId=trial.trialId or str(ObjectId()),
-            storedAt=utc_now(),
-            success=False,
-            error=str(e)
-        )
 
 @router.post("/v1/trials", response_model=TrialBatchAck, status_code=201)
 async def create_trials(body: TrialBatchIn, idem_key: str = Header(..., alias="X-Idempotency-Key")):
     """
-    Create multiple trials in a batch. Each trial in the batch will use a derived idempotency key
-    based on the main idempotency key and the trial index.
+    Create multiple trials in a batch using bulk operations for optimal performance.
+    Each trial in the batch will use a derived idempotency key based on the main 
+    idempotency key and the trial index. Individual trial errors are isolated and 
+    don't affect the processing of other trials in the batch.
     """
     logger.info(f"Processing batch of {len(body.trials)} trials with base idempotency key: {idem_key}")
+    
+    if not body.trials:
+        return TrialBatchAck(results=[], totalProcessed=0, successCount=0, errorCount=0)
+    
+    # Step 1: Generate idempotency keys and check for duplicates in bulk
+    trial_idem_keys = [f"{idem_key}_{idx}" for idx in range(len(body.trials))]
+    
+    # Safe duplicate check with error handling
+    existing_idem_keys = set()
+    try:
+        existing_trials = await trial_events().find(
+            {"idemKey": {"$in": trial_idem_keys}}
+        ).to_list(length=None)
+        existing_idem_keys = {trial["idemKey"] for trial in existing_trials}
+        logger.debug(f"Found {len(existing_idem_keys)} existing trials out of {len(trial_idem_keys)} requested")
+    except Exception as e:
+        logger.warning(f"Error checking for duplicate trials: {str(e)}")
+        # Continue processing - we'll handle duplicates at insert time
+    
+    # Step 2: Batch fetch all unique SKUs with error handling
+    product_snapshots = {}
+    try:
+        unique_skus = list(set(trial.sku for trial in body.trials))
+        product_snapshots = await fetch_products_by_skus(unique_skus)
+        logger.debug(f"Fetched product data for {len(unique_skus)} unique SKUs")
+    except Exception as e:
+        logger.warning(f"Error fetching product snapshots: {str(e)}")
+        # Continue processing without product data
+    
+    # Step 3: Process each trial individually with error isolation
+    docs_to_insert = []
+    doc_to_result_mapping = []  # Track which result corresponds to which doc
     results: list[TrialResult] = []
     
     for idx, trial in enumerate(body.trials):
-        # Create a unique idempotency key for each trial by appending the index
-        trial_idem_key = f"{idem_key}_{idx}"
-        result = await _process_single_trial(trial, trial_idem_key)
-        results.append(result)
+        trial_idem_key = trial_idem_keys[idx]
         
-        # Log individual failures for monitoring
-        if not result.success:
-            logger.warning(f"Trial {idx} failed in batch {idem_key}: {result.error}")
+        try:
+            # Handle duplicate idempotency keys
+            if trial_idem_key in existing_idem_keys:
+                logger.debug(f"Skipping duplicate trial at index {idx} with key {trial_idem_key}")
+                results.append(TrialResult(
+                    trialId=trial.trialId or str(ObjectId()),
+                    storedAt=utc_now(),
+                    success=False,
+                    error="Duplicate idempotency key"
+                ))
+                continue
+            
+            # Process trial data with individual error handling
+            ts_utc = to_utc(trial.timestamp) if trial.timestamp else utc_now()
+            trialId = trial.trialId or str(ObjectId())
+            
+            # Get product snapshot from batch lookup (may be None if fetch failed)
+            snap = product_snapshots.get(trial.sku)
+            
+            doc = {
+                "trialId": trialId,
+                "timestamp": ts_utc,
+                "storeCode": trial.storeCode.upper(),
+                "sku": trial.sku,
+                "feedback": trial.feedback,
+                "sessionId": trial.sessionId,
+                "idemKey": trial_idem_key,
+                "productSnapshot": None,
+                "enrichment": {"status": "pending", "lastTriedAt": ts_utc},
+                "scannedBy": trial.scannedBy,
+                "bundleId": trial.bundleId
+            }
+            
+            if snap:
+                try:
+                    stock_here = (snap.stockByLocation or {}).get(doc["storeCode"])
+                    doc["productSnapshot"] = {
+                        "title": snap.title,
+                        "price": snap.price,
+                        "size": snap.size,
+                        "color": snap.color,
+                        "category": snap.category,
+                        "imageUrl": snap.imageUrl,
+                        "stockAtTrial": stock_here
+                    }
+                    doc["enrichment"]["status"] = "done"
+                except Exception as e:
+                    logger.warning(f"Error processing product snapshot for trial {idx}, SKU {trial.sku}: {str(e)}")
+                    # Continue with pending enrichment status
+            
+            docs_to_insert.append(doc)
+            doc_to_result_mapping.append(len(results))  # Track result index for this doc
+            results.append(TrialResult(
+                trialId=trialId,
+                storedAt=ts_utc,
+                success=True  # Will be updated if insert fails
+            ))
+            
+        except Exception as e:
+            logger.error(f"Error processing trial {idx} (SKU: {trial.sku}): {str(e)}", exc_info=True)
+            results.append(TrialResult(
+                trialId=trial.trialId or str(ObjectId()),
+                storedAt=utc_now(),
+                success=False,
+                error=f"Processing error: {str(e)}"
+            ))
     
+    # Step 4: Bulk insert all valid documents with proper BulkWriteError handling
+    if docs_to_insert:
+        try:
+            insert_operations = [InsertOne(doc) for doc in docs_to_insert]
+            bulk_result = await trial_events().bulk_write(insert_operations, ordered=False)
+            logger.debug(f"Bulk insert completed successfully: {bulk_result.inserted_count} documents inserted")
+            
+        except BulkWriteError as bwe:
+            # BulkWriteError is raised even when some operations succeed
+            # We need to inspect the details to handle partial success correctly
+            bulk_result = bwe.details
+            inserted_count = bulk_result.get('nInserted', 0)
+            write_errors = bulk_result.get('writeErrors', [])
+            
+            logger.info(f"Bulk insert completed with partial success: {inserted_count} inserted, {len(write_errors)} errors")
+            
+            # Create a set of failed indices for quick lookup
+            failed_indices = {error['index'] for error in write_errors}
+            
+            # Update results based on which specific operations failed
+            for doc_idx, result_idx in enumerate(doc_to_result_mapping):
+                if doc_idx in failed_indices:
+                    # Find the specific error for this index
+                    error_detail = next((e for e in write_errors if e['index'] == doc_idx), None)
+                    error_msg = "Insert failed"
+                    if error_detail:
+                        error_msg = error_detail.get('errmsg', 'Unknown insert error')
+                        # Common duplicate key error handling
+                        if error_detail.get('code') == 11000:  # Duplicate key error code
+                            error_msg = "Duplicate idempotency key"
+                    
+                    results[result_idx].success = False
+                    results[result_idx].error = error_msg
+                    logger.debug(f"Trial at doc index {doc_idx} failed: {error_msg}")
+                # else: operation succeeded, result already marked as success=True
+            
+            logger.info(f"Processed BulkWriteError: {inserted_count} successful inserts, {len(failed_indices)} failures")
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in bulk insert operation: {str(e)}", exc_info=True)
+            # Only in case of unexpected errors (connection issues, etc.) mark all as failed
+            for result_idx in doc_to_result_mapping:
+                results[result_idx].success = False
+                results[result_idx].error = f"Bulk insert error: {str(e)}"
+    
+    # Step 5: Calculate final counts and return
     success_count = sum(1 for r in results if r.success)
     error_count = len(results) - success_count
     
