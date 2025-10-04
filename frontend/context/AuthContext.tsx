@@ -56,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const verifyUserAuth = useCallback(async (authToken: string): Promise<boolean> => {
     try {
-      console.log('[Auth] GET', USER_AUTH_URL);
+      // console.log('[Auth] GET', USER_AUTH_URL);
       const res = await fetch(USER_AUTH_URL, {
         method: 'GET',
         headers: { 'X-Auth-Token': authToken },
@@ -73,7 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
     try {
       setLoading(true);
-      console.log('[Auth] POST', LOGIN_URL, { email });
+      // console.log('[Auth] POST', LOGIN_URL, { email });
       const res = await fetch(LOGIN_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,7 +137,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) {
-    // graceful fallback if provider not yet mounted
     return {
       isAuthenticated: false,
       user: null,
