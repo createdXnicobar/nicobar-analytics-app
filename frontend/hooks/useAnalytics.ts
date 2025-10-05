@@ -37,12 +37,13 @@ const useAnalytics = (storeCode: string, date: string, days: number) => {
     try {
       setLoading(true);
       setError(null);
-      
-      const requestUrl = `${API_BASE_URL}/v1/insights/store/${storeCode}`;
-      // console.log('🌐 Making request to:', requestUrl);
+      // Always normalize the date to IST (YYYY-MM-DD) before hitting backend
+      const istDate = new Date(date + 'T00:00:00Z').toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
+      const requestUrl = `${API_BASE_URL}/v1/insights/store/${storeCode}`;
+      console.log('🌐 Making request to:', requestUrl, { date: istDate, days });
       const response = await axios.get(requestUrl, {
-        params: { date, days },
+        params: { date: istDate, days },
         headers: { 'Content-Type': 'application/json' },
         timeout: 10000
       });
