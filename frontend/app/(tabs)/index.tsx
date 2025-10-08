@@ -9,9 +9,13 @@ import {
   Image,
   TouchableOpacity,
   ScrollView,
+  Animated,
+  Pressable,
+  PanResponder,
+  Easing,
+  Platform,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform } from "react-native";
 import { CameraView, Camera } from "expo-camera";
 import uuid from 'react-native-uuid';
 import { useBundle } from '../../context/BundleContext';
@@ -93,6 +97,7 @@ export default function Index() {
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
+  const hasAndroidNav = Platform.OS === 'android' && insets.bottom >= 8;
 
   // Modal state and product data
   const [modalVisible, setModalVisible] = useState(false);
@@ -104,6 +109,41 @@ export default function Index() {
   const [currentBasketId, setCurrentBasketId] = useState<string | null>(null);
   const { addBasket } = useBundle();
   const [toast, setToast] = useState<string | null>(null);
+  // Smooth sheet-only animation (overlay stays static)
+  const sheetY = useRef(new Animated.Value(140)).current;
+  const dragY = useRef(new Animated.Value(0)).current;
+  const openSheet = () => {
+    sheetY.setValue(140);
+    Animated.timing(sheetY, { toValue: 0, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  };
+  const closeSheet = (onEnd?: () => void) => {
+    Animated.timing(sheetY, { toValue: 220, duration: 130, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => {
+      onEnd && onEnd();
+    });
+  };
+  const panHandlers = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 8,
+      onPanResponderMove: Animated.event([null, { dy: dragY }], { useNativeDriver: true }),
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 80) {
+          closeSheet(() => {
+            // Defer heavy state updates until after animation frames
+            requestAnimationFrame(() => {
+              setModalVisible(false);
+              setCanScan(true);
+              setSelectedFeedbacks([]);
+              lastScanned.current = null;
+              requestAnimationFrame(() => setCameraKey(prev => prev + 1));
+              dragY.setValue(0);
+            });
+          });
+        } else {
+          Animated.spring(dragY, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
+        }
+      },
+    })
+  ).current;
 
   
   useEffect(() => {
@@ -414,11 +454,15 @@ export default function Index() {
 
   
   const handleModalClose = () => {
-    setModalVisible(false);
-    setCanScan(true);
-    setSelectedFeedbacks([]);
-    lastScanned.current = null;
-    setCameraKey(prev => prev + 1); 
+    closeSheet(() => {
+      requestAnimationFrame(() => {
+        setModalVisible(false);
+        setCanScan(true);
+        setSelectedFeedbacks([]);
+        lastScanned.current = null;
+        requestAnimationFrame(() => setCameraKey(prev => prev + 1));
+      });
+    });
   };
 
   const BasketStatus = () => {
@@ -475,7 +519,7 @@ export default function Index() {
             </View>
           )}
           {toast && (
-            <View style={styles.toast}>
+            <View style={[styles.toast, hasAndroidNav ? { bottom: 24 + insets.bottom } : null]}>
               <Text style={styles.toastText}>{toast}</Text>
             </View>
           )}
@@ -502,12 +546,13 @@ export default function Index() {
 
       <Modal
         visible={modalVisible}
-        animationType="slide"
+        animationType="none"
         transparent
+        onShow={openSheet}
         onRequestClose={handleModalClose}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.sheet}>
+        <Pressable style={styles.modalBackdrop} onPress={handleModalClose}>
+          <Animated.View style={[styles.sheet, { transform: [{ translateY: Animated.add(sheetY, dragY) }] }]} onStartShouldSetResponder={() => true} {...panHandlers.panHandlers}>
             <View style={styles.sheetHandle} />
             <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
               <View style={styles.sheetHeader}>
@@ -578,7 +623,7 @@ export default function Index() {
                 </View>
               </View>
 
-              <View style={styles.threeButtonRow}>
+              <View style={[styles.threeButtonRow, hasAndroidNav ? { marginBottom: Math.max(0, insets.bottom - 8) } : null]}>
                 <TouchableOpacity
                   style={[styles.bigButton, styles.retakeButton]}
                   onPress={handleModalClose}
@@ -612,8 +657,8 @@ export default function Index() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </View>
-        </View>
+          </Animated.View>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );

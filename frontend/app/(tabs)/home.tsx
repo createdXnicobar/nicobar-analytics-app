@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator } from 'react-native';
+import { useRef } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator, Pressable, Animated, PanResponder } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
@@ -58,8 +59,31 @@ export default function Home() {
   const [previewTitle, setPreviewTitle] = useState<string>('');
   const [previewItems, setPreviewItems] = useState<Array<{ sku: string; title: string; image?: string }>>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const panY = useRef(new Animated.Value(0)).current;
+  const resetSheet = () => {
+    Animated.spring(panY, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
+  };
+  const animateClose = () => {
+    Animated.timing(panY, { toValue: 180, duration: 180, useNativeDriver: true }).start(() => {
+      // Do not reset panY here to avoid a one-frame jump back to 0 before unmount.
+      setPreviewOpen(false);
+      setPreviewItems([]);
+    });
+  };
+  const sheetPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 8,
+      onPanResponderMove: (_, g) => {
+        if (g.dy >= 0) panY.setValue(g.dy); // block upward drag
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 80) animateClose(); else resetSheet();
+      },
+    })
+  ).current;
 
   const openPreview = async (bundle: any) => {
+    panY.setValue(140);
     setPreviewOpen(true);
     setPreviewTitle(bundle?.bundleId ? `Bundle ${String(bundle.bundleId).slice(-6)}` : (bundle?.name || 'Bundle'));
     setPreviewItems([]);
@@ -78,8 +102,7 @@ export default function Home() {
   };
 
   const closePreview = () => {
-    setPreviewOpen(false);
-    setPreviewItems([]);
+    animateClose();
   };
 
   const renderHeader = () => (
@@ -190,9 +213,20 @@ export default function Home() {
     />
 
     {/* Basket preview modal */}
-    <Modal visible={previewOpen} transparent animationType="slide" onRequestClose={closePreview}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.previewSheet}>
+    <Modal
+      visible={previewOpen}
+      transparent
+      animationType="none"
+      presentationStyle="overFullScreen"
+      hardwareAccelerated
+      statusBarTranslucent
+      onShow={() => {
+        Animated.timing(panY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+      }}
+      onRequestClose={closePreview}
+    >
+      <Pressable style={styles.modalBackdrop} onPress={closePreview}>
+        <Animated.View style={[styles.previewSheet, { transform: [{ translateY: panY }] }]} onStartShouldSetResponder={() => true} {...sheetPan.panHandlers}>
           <View style={styles.sheetHandle} />
           <TouchableOpacity onPress={closePreview} style={styles.closeBtn} accessibilityLabel="Close basket preview">
             <Text style={{ color: '#111', fontWeight: '700' }}>✕</Text>
@@ -220,8 +254,8 @@ export default function Home() {
               ListEmptyComponent={<Text style={{ color: '#6b7280' }}>No items in this basket</Text>}
             />
           )}
-        </View>
-      </View>
+        </Animated.View>
+      </Pressable>
     </Modal>
     
     <Modal visible={showFilter} transparent animationType="slide">

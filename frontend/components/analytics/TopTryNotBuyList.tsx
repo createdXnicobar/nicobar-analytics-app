@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, ActivityIndicator, Dimensions, Image as RNImage } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, ActivityIndicator, Dimensions, Image as RNImage, Animated, Pressable, PanResponder } from 'react-native';
 
 interface Item {
   sku: string;
@@ -56,6 +56,25 @@ export default function TopTryNotBuyList({ items }: TopTryNotBuyListProps) {
   const [product, setProduct] = useState<any | null>(null);
   const [fetching, setFetching] = useState(false);
   const [imgHeight, setImgHeight] = useState<number | null>(null);
+  const sheetY = useRef(new Animated.Value(140)).current;
+  const swipeY = useRef(new Animated.Value(0)).current;
+  const openSheet = () => {
+    sheetY.setValue(140);
+    Animated.timing(sheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+  };
+  const closeSheet = (onEnd?: () => void) => {
+    Animated.timing(sheetY, { toValue: 200, duration: 180, useNativeDriver: true }).start(() => { onEnd && onEnd(); });
+  };
+  const panHandlers = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 8,
+      onPanResponderMove: Animated.event([null, { dy: swipeY }], { useNativeDriver: true }),
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 80) { closeSheet(() => { setSelectedSku(null); setProduct(null); swipeY.setValue(0); }); }
+        else { Animated.spring(swipeY, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start(); }
+      },
+    })
+  ).current;
 
   const openProduct = async (sku: string) => {
     setSelectedSku(sku);
@@ -72,7 +91,7 @@ export default function TopTryNotBuyList({ items }: TopTryNotBuyListProps) {
     }
   };
 
-  const closeModal = () => { setSelectedSku(null); setProduct(null); };
+  const closeModal = () => { closeSheet(() => { setSelectedSku(null); setProduct(null); }); };
 
   // Compute image height dynamically to show more of the image aesthetically
   useEffect(() => {
@@ -120,9 +139,9 @@ export default function TopTryNotBuyList({ items }: TopTryNotBuyListProps) {
         ))}
       </ScrollView>
 
-      <Modal visible={!!selectedSku} transparent animationType="slide" onRequestClose={closeModal}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.sheet}>
+      <Modal visible={!!selectedSku} transparent animationType="none" onShow={openSheet} onRequestClose={closeModal}>
+        <Pressable style={styles.modalBackdrop} onPress={closeModal}>
+          <Animated.View style={[styles.sheet, { transform: [{ translateY: Animated.add(sheetY, swipeY) }] }]} onStartShouldSetResponder={() => true} {...panHandlers.panHandlers}>
             <View style={styles.sheetHandle} />
             <TouchableOpacity onPress={closeModal} style={styles.closeBtn} accessibilityLabel="Close details">
               <Text style={{ color: '#111', fontWeight: '700' }}>✕</Text>
@@ -158,8 +177,8 @@ export default function TopTryNotBuyList({ items }: TopTryNotBuyListProps) {
                 </View>
               )}
             </ScrollView>
-          </View>
-        </View>
+          </Animated.View>
+        </Pressable>
       </Modal>
     </View>
   );

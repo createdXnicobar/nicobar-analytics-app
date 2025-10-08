@@ -48,6 +48,7 @@ export default function DateFilter({
 
   const handleSelect = (days: number) => {
     const todayIST = formatIST(new Date());
+    setShowCustom(false);
     onDateRangeSelect({ date: todayIST, days });
   };
 
@@ -77,13 +78,13 @@ export default function DateFilter({
                 key={option.days}
                 style={[
                   styles.option,
-                  currentRange.days === option.days && styles.selectedOption
+                  (currentRange.days === option.days && !showCustom) ? styles.selectedOption : undefined
                 ]}
                 onPress={() => handleSelect(option.days)}
               >
                 <Text style={[
                   styles.optionText,
-                  currentRange.days === option.days && styles.selectedText
+                  (currentRange.days === option.days && !showCustom) ? styles.selectedText : undefined
                 ]}>
                   {option.label}
                 </Text>
@@ -92,7 +93,7 @@ export default function DateFilter({
 
             <TouchableOpacity
               style={[styles.option, showCustom && styles.selectedOption]}
-              onPress={() => setShowCustom(!showCustom)}
+              onPress={() => setShowCustom(true)}
             >
               <Text style={[styles.optionText, showCustom && styles.selectedText]}>Custom range…</Text>
             </TouchableOpacity>
@@ -101,10 +102,10 @@ export default function DateFilter({
               <View style={styles.customContainer}>
                 <View style={styles.customRow}>
                   <TouchableOpacity style={styles.pill} onPress={() => { setShowStartPicker(true); setShowEndPicker(false); }}>
-                    <Text style={styles.pillText}>Start: {formatIST(startDate)}</Text>
+                    <Text style={styles.pillText}>Start Date: {formatIST(startDate)}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.pill} onPress={() => { setShowEndPicker(true); setShowStartPicker(false); }}>
-                    <Text style={styles.pillText}>End: {formatIST(endDate)}</Text>
+                    <Text style={styles.pillText}>End Date: {formatIST(endDate)}</Text>
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity style={styles.applyBtn} onPress={applyCustom}>
