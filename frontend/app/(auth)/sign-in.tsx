@@ -13,8 +13,12 @@ export default function SignIn() {
   const isValidEmail = useMemo(() => /[^\s@]+@[^\s@]+\.[^\s@]+/.test(email.trim()), [email]);
 
   const onSubmit = async () => {
-    if (!email || !password) {
-      Alert.alert('Missing fields', 'Please enter both email and password');
+    if (!email) {
+      Alert.alert('Missing fields', 'Please enter an email address');
+      return;
+    }
+    if (!password) {
+      Alert.alert('Missing fields', 'Please enter a password');
       return;
     }
     if (!isValidEmail) {
