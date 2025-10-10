@@ -14,6 +14,7 @@ import {
   PanResponder,
   Easing,
   Platform,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, Camera } from "expo-camera";
@@ -97,7 +98,13 @@ export default function Index() {
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  const hasAndroidNav = Platform.OS === 'android' && insets.bottom >= 8;
+  // const hasAndroidNav = Platform.OS === 'android' && insets.bottom >= 8;
+  
+  // Responsive screen dimensions
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const isSmallScreen = screenWidth < 375;
+  const isLargeScreen = screenWidth > 414;
+  const isTablet = screenWidth > 768;
 
   // Modal state and product data
   const [modalVisible, setModalVisible] = useState(false);
@@ -519,7 +526,7 @@ export default function Index() {
             </View>
           )}
           {toast && (
-            <View style={[styles.toast, hasAndroidNav ? { bottom: 24 + insets.bottom } : null]}>
+            <View style={[styles.toast]}>
               <Text style={styles.toastText}>{toast}</Text>
             </View>
           )}
@@ -552,9 +559,13 @@ export default function Index() {
         onRequestClose={handleModalClose}
       >
         <Pressable style={styles.modalBackdrop} onPress={handleModalClose}>
-          <Animated.View style={[styles.sheet, { transform: [{ translateY: Animated.add(sheetY, dragY) }] }]} onStartShouldSetResponder={() => true} {...panHandlers.panHandlers}>
-            <View style={styles.sheetHandle} />
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
+          <Animated.View style={[styles.sheet, { transform: [{ translateY: Animated.add(sheetY, dragY) }] }]}>
+            <View style={styles.sheetHandle} {...panHandlers.panHandlers} />
+            <ScrollView 
+              showsVerticalScrollIndicator={false} 
+              style={styles.scrollView}
+              contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) + 24 }}
+            >
               <View style={styles.sheetHeader}>
                 {product?.image ? (
                   <Image source={{ uri: product.image }} style={styles.productImage} resizeMode="cover" />
@@ -623,7 +634,7 @@ export default function Index() {
                 </View>
               </View>
 
-              <View style={[styles.threeButtonRow, hasAndroidNav ? { marginBottom: Math.max(0, insets.bottom - 8) } : null]}>
+              <View style={[styles.threeButtonRow]}>
                 <TouchableOpacity
                   style={[styles.bigButton, styles.retakeButton]}
                   onPress={handleModalClose}
@@ -664,29 +675,99 @@ export default function Index() {
   );
 }
 
+// Get screen dimensions for responsive design
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const isSmallScreen = screenWidth < 375;
+const isLargeScreen = screenWidth > 414;
+const isTablet = screenWidth > 768;
+
 const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: 50, backgroundColor: "#111", padding: 16 },
   centerContainer: { flex: 1, alignItems: "center", justifyContent: "center" },
   whiteText: { color: "#fff" },
-  title: { color: "#fff", fontSize: 20, textAlign: "center", marginBottom: 5, fontWeight: "bold" },
-  subtitle: { color: "#aaa", fontSize: 14, textAlign: "center", marginBottom: 20 },
+  title: { 
+    color: "#fff", 
+    fontSize: isSmallScreen ? 18 : isLargeScreen ? 22 : 20, 
+    textAlign: "center", 
+    marginBottom: 5, 
+    fontWeight: "bold" 
+  },
+  subtitle: { 
+    color: "#aaa", 
+    fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14, 
+    textAlign: "center", 
+    marginBottom: 20 
+  },
   basketStatus: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1f2937', padding: 12, borderRadius: 8, marginBottom: 16 },
-  basketText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  submitBasketText: { color: '#10b981', fontSize: 14, fontWeight: 'bold' },
+  basketText: { 
+    color: '#fff', 
+    fontSize: isSmallScreen ? 14 : isLargeScreen ? 18 : 16, 
+    fontWeight: '600' 
+  },
+  submitBasketText: { 
+    color: '#10b981', 
+    fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14, 
+    fontWeight: 'bold' 
+  },
   scanner: { flex: 1, borderRadius: 8, overflow: "hidden", marginBottom: 20, position: "relative" },
   overlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" },
-  scanFrame: { width: 250, height: 250, borderWidth: 2, borderColor: "#fff", borderRadius: 12, backgroundColor: "transparent" },
+  scanFrame: { 
+    width: Math.min(screenWidth * 0.7, 300), 
+    height: Math.min(screenWidth * 0.7, 300), 
+    borderWidth: 2, 
+    borderColor: "#fff", 
+    borderRadius: 12, 
+    backgroundColor: "transparent" 
+  },
   loadingOverlay: { position: "absolute", backgroundColor: "rgba(0,0,0,0.7)", padding: 20, borderRadius: 10, alignItems: "center" },
-  loadingText: { color: "#fff", marginTop: 10, fontSize: 16 },
-  status: { color: "#fff", textAlign: "center", marginBottom: 15, fontSize: 16 },
+  loadingText: { 
+    color: "#fff", 
+    marginTop: 10, 
+    fontSize: isSmallScreen ? 14 : isLargeScreen ? 18 : 16 
+  },
+  status: { 
+    color: "#fff", 
+    textAlign: "center", 
+    marginBottom: 15, 
+    fontSize: isSmallScreen ? 14 : isLargeScreen ? 18 : 16 
+  },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: "#fff", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, maxHeight: "80%" },
-  scrollView: { maxHeight: "100%" },
-  sheetHandle: { width: 160, height: 4, backgroundColor: "#ccc", alignSelf: "center", borderRadius: 2, marginBottom: 16 },
+  sheet: { 
+    backgroundColor: "#fff", 
+    borderTopLeftRadius: 16, 
+    borderTopRightRadius: 16, 
+    padding: 16, 
+    height: undefined, // Remove maxHeight, set minHeight if needed
+    minHeight: isSmallScreen ? "60%" : "70%", 
+    maxHeight: isTablet ? "70%" : "100%", // Cover app nav, not system
+  },
+  scrollView: { 
+    flexGrow: 1 
+  },
+  sheetHandle: { 
+    width: isSmallScreen ? 120 : isLargeScreen ? 200 : 160, 
+    height: 4, 
+    backgroundColor: "#ccc", 
+    alignSelf: "center", 
+    borderRadius: 2, 
+    marginBottom: 16 
+  },
   sheetHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  productImage: { width: 64, height: 96, borderRadius: 8 },
-  productId: { color: "#111", fontSize: 14, fontWeight: '700' },
-  productTitle: { color: "#111", fontSize: 20, fontWeight: "bold" },
+  productImage: { 
+    width: isSmallScreen ? 56 : isLargeScreen ? 72 : 64, 
+    height: isSmallScreen ? 84 : isLargeScreen ? 108 : 96, 
+    borderRadius: 8 
+  },
+  productId: { 
+    color: "#111", 
+    fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14, 
+    fontWeight: '700' 
+  },
+  productTitle: { 
+    color: "#111", 
+    fontSize: isSmallScreen ? 18 : isLargeScreen ? 22 : 20, 
+    fontWeight: "bold" 
+  },
   subtitleText: { color: "#333", marginTop: 2 },
   tagRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
   tag: { backgroundColor: "#f1f1f1", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8, marginBottom: 8 },
@@ -694,21 +775,67 @@ const styles = StyleSheet.create({
   // New detail list styles
   detailList: { backgroundColor: "#f9fafb", borderRadius: 12, paddingVertical: 6, marginTop: 8 },
   detailRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: "#e5e7eb" },
-  detailLabel: { color: "#6b7280", fontWeight: "600" },
-  detailValue: { color: "#111827", fontWeight: "600" },
+  detailLabel: { 
+    color: "#6b7280", 
+    fontWeight: "600",
+    fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14
+  },
+  detailValue: { 
+    color: "#111827", 
+    fontWeight: "600",
+    fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14
+  },
   feedbackSection: { marginTop: 20, marginBottom: 20 },
-  feedbackTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12, color: '#333' },
+  feedbackTitle: { 
+    fontSize: isSmallScreen ? 14 : isLargeScreen ? 18 : 16, 
+    fontWeight: '600', 
+    marginBottom: 12, 
+    color: '#333' 
+  },
   feedbackOptions: { flexDirection: 'row', flexWrap: 'wrap' },
-  feedbackOption: { backgroundColor: '#f5f5f5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginRight: 8, marginBottom: 8, borderWidth: 1, borderColor: '#ddd' },
+  feedbackOption: { 
+    backgroundColor: '#f5f5f5', 
+    paddingHorizontal: isSmallScreen ? 10 : 12, 
+    paddingVertical: isSmallScreen ? 6 : 8, 
+    borderRadius: 20, 
+    marginRight: 8, 
+    marginBottom: 8, 
+    borderWidth: 1, 
+    borderColor: '#ddd' 
+  },
   feedbackOptionSelected: { backgroundColor: '#111827', borderColor: '#111827' },
-  feedbackOptionText: { color: '#666', fontSize: 12 },
+  feedbackOptionText: { 
+    color: '#666', 
+    fontSize: isSmallScreen ? 10 : isLargeScreen ? 14 : 12 
+  },
   feedbackOptionTextSelected: { color: '#fff' },
-  threeButtonRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, gap: 8 },
-  bigButton: { flex: 1, paddingVertical: 16, borderRadius: 12, alignItems: 'center', minHeight: 60, justifyContent: 'center' },
+  threeButtonRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    marginTop: 20, 
+    gap: isSmallScreen ? 6 : 8 
+  },
+  bigButton: { 
+    flex: 1, 
+    paddingVertical: isSmallScreen ? 14 : 16, 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    minHeight: isSmallScreen ? 50 : 60, 
+    justifyContent: 'center' 
+  },
   retakeButton: { backgroundColor: '#6b7280' },
   addToBasketButton: { backgroundColor: '#10b981' },
   submitButton: { backgroundColor: '#111827' },
-  bigButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 14, textAlign: 'center' },
+  bigButtonText: { 
+    color: '#fff', 
+    fontWeight: 'bold', 
+    fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14, 
+    textAlign: 'center' 
+  },
   toast: { position: 'absolute', bottom: 24, alignSelf: 'center', backgroundColor: 'rgba(17,24,39,0.95)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
-  toastText: { color: '#fff', fontWeight: '700' },
+  toastText: { 
+    color: '#fff', 
+    fontWeight: '700',
+    fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14
+  },
 });
