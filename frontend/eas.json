@@ -16,6 +16,12 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "mayanksingh.srcm@gmail.com",
+        "ascAppId": "6754447513",
+        "appleTeamId": "GM67H52M9V"
+      }
+    }
   }
 }

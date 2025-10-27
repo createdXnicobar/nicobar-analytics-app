@@ -21,6 +21,7 @@ export default function DateFilter({
   const [endDate, setEndDate] = useState<Date>(new Date());
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   // Format a JS Date as YYYY-MM-DD in IST regardless of device timezone
   const formatIST = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
@@ -101,11 +102,11 @@ export default function DateFilter({
             {showCustom && (
               <View style={styles.customContainer}>
                 <View style={styles.customRow}>
-                  <TouchableOpacity style={styles.pill} onPress={() => { setShowStartPicker(true); setShowEndPicker(false); }}>
-                    <Text style={styles.pillText}>Start Date: {formatIST(startDate)}</Text>
+                  <TouchableOpacity style={[styles.pill, showStartPicker ? styles.pillActive : null]} onPress={() => { setShowStartPicker(true); setShowEndPicker(false); }}>
+                    <Text style={[styles.pillText, showStartPicker ? styles.pillTextActive : null]}>Start Date: {formatIST(startDate)}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.pill} onPress={() => { setShowEndPicker(true); setShowStartPicker(false); }}>
-                    <Text style={styles.pillText}>End Date: {formatIST(endDate)}</Text>
+                  <TouchableOpacity style={[styles.pill, showEndPicker ? styles.pillActive : null]} onPress={() => { setShowEndPicker(true); setShowStartPicker(false); }}>
+                    <Text style={[styles.pillText, showEndPicker ? styles.pillTextActive : null]}>End Date: {formatIST(endDate)}</Text>
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity style={styles.applyBtn} onPress={applyCustom}>
@@ -122,9 +123,8 @@ export default function DateFilter({
                         themeVariant={'light'}
                         textColor={'#111' as any}
                         onChange={(e, d) => { setShowStartPicker(Platform.OS === 'ios'); if (d) setStartDate(d); }}
-                        // Start cannot be after End or after today; cannot be earlier than End - 30 days
-                        maximumDate={new Date(Math.min(endDate.getTime(), today.getTime()))}
-                        minimumDate={new Date(endDate.getTime() - 30 * MS_DAY)}
+                        // Allow any past date; only cap future dates
+                        maximumDate={today}
                       />
                     )}
                     {showEndPicker && (
@@ -134,10 +134,23 @@ export default function DateFilter({
                         display={Platform.OS === 'ios' ? 'inline' : 'default'}
                         themeVariant={'light'}
                         textColor={'#111' as any}
-                        onChange={(e, d) => { setShowEndPicker(Platform.OS === 'ios'); if (d) setEndDate(d); }}
-                        // End cannot be before Start; cannot be after today or Start + 30 days
+                        onChange={(e, d) => {
+                          setShowEndPicker(Platform.OS === 'ios');
+                          if (d) {
+                            const days = diffDaysInclusiveIST(startDate, d);
+                            if (days > 31) {
+                              const capped = new Date(Math.min(today.getTime(), startDate.getTime() + 30 * MS_DAY));
+                              setEndDate(capped);
+                              setToast('Date range cannot be more than 31 days');
+                              setTimeout(() => setToast(null), 1600);
+                            } else {
+                              setEndDate(d);
+                            }
+                          }
+                        }}
+                        // End cannot be before Start; cap future dates to today
                         minimumDate={startDate}
-                        maximumDate={new Date(Math.min(today.getTime(), startDate.getTime() + 30 * MS_DAY))}
+                        maximumDate={today}
                       />
                     )}
                   </View>
@@ -145,6 +158,11 @@ export default function DateFilter({
               </View>
             )}
           </View>
+          {toast && (
+            <View style={{ alignSelf: 'center', backgroundColor: 'rgba(17,24,39,0.95)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginTop: 8 }}>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>{toast}</Text>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -229,6 +247,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#111',
     fontWeight: '600',
+  },
+  pillActive: {
+    backgroundColor: '#111827',
+  },
+  pillTextActive: {
+    color: '#fff',
   },
   applyBtn: {
     marginTop: 12,

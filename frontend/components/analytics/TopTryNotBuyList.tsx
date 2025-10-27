@@ -111,8 +111,8 @@ export default function TopTryNotBuyList({ items }: TopTryNotBuyListProps) {
     <View style={styles.container}>
       <Text style={styles.sectionHeader}>Product Performance</Text>
       <ScrollView style={styles.list}>
-        {items.map((item) => (
-          <TouchableOpacity key={item.sku} style={styles.itemCard} onPress={() => openProduct(item.sku)} activeOpacity={0.85}>
+        {items.map((item, index) => (
+          <TouchableOpacity key={`${item.sku}-${index}`} style={styles.itemCard} onPress={() => openProduct(item.sku)} activeOpacity={0.85}>
             {imageMap[item.sku] ? (
               <Image source={{ uri: imageMap[item.sku]! }} style={styles.cardImage} resizeMode="cover" />
             ) : (
