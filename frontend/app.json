@@ -1,32 +1,34 @@
 {
   "expo": {
-    "name": "Nicobar Trials",
+    "name": "Nicobar Analytics",
     "slug": "qr-post-app",
     "owner": "ayush.20204049",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
-    "icon": "./assets/images/nico_logo.png",
+    "icon": "./assets/images/nico_logo_1024.png",
     "scheme": "qrpostapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "sdkVersion": "54.0.0",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.qrpostapp",
+      "bundleIdentifier": "com.nicobar.storeapp.dev",
+      "icon": "./assets/images/nico_logo_1024.png",
       "infoPlist": {
-        "NSCameraUsageDescription": "Camera required to scan QR codes and barcodes."
+        "NSCameraUsageDescription": "Camera required to scan QR codes and barcodes.",
+        "CFBundleDisplayName": "Nicobar Analytics"
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/nico_logo.png",
+        "foregroundImage": "./assets/images/nico_logo_1024.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.CAMERA"
       ],
-      "package": "com.anonymous.qrpostapp"
+      "package": "com.nicobar.storeapp.dev"
     },
     "web": {
       "bundler": "metro",

@@ -26,7 +26,7 @@ import * as SecureStore from 'expo-secure-store';
 
 
 // Backend base URL
-const BACKEND_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
+const BACKEND_BASE_URL = 'https://storeapp.nicobar.com';
 const BACKEND_POST_PATH = "/v1/trials";
 
 // Store code comes from authenticated user profile; falls back to BIN
@@ -98,7 +98,6 @@ export default function Index() {
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  // const hasAndroidNav = Platform.OS === 'android' && insets.bottom >= 8;
   
   // Responsive screen dimensions
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -141,7 +140,7 @@ export default function Index() {
               setCanScan(true);
               setSelectedFeedbacks([]);
               lastScanned.current = null;
-              requestAnimationFrame(() => setCameraKey(prev => prev + 1));
+              remountCamera();
               dragY.setValue(0);
             });
           });
@@ -152,6 +151,11 @@ export default function Index() {
     })
   ).current;
 
+  const remountCamera = () => {
+    // Smooth remount across two frames avoids black preview on some Android devices
+    requestAnimationFrame(() => requestAnimationFrame(() => setCameraKey(prev => prev + 1)));
+  };
+ 
   
   useEffect(() => {
     (async () => {
@@ -225,7 +229,7 @@ export default function Index() {
         setTimeout(() => setToast(null), 1400);
         setCanScan(true);
         lastScanned.current = null;
-        setCameraKey(prev => prev + 1);
+        remountCamera();
         return;
       }
 
@@ -371,7 +375,7 @@ export default function Index() {
       // re-scan
       setCanScan(true);
       lastScanned.current = null;
-      setCameraKey(prev => prev + 1);
+      remountCamera();
       
     } catch (err) {
       // Always close modal to prevent stuck UI, then show error toast
@@ -400,7 +404,7 @@ export default function Index() {
     setCanScan(true);
     setSelectedFeedbacks([]);
     lastScanned.current = null;
-    setCameraKey(prev => prev + 1);
+    remountCamera();
   };
 
   const submitBasket = async () => {
@@ -467,7 +471,7 @@ export default function Index() {
         setCanScan(true);
         setSelectedFeedbacks([]);
         lastScanned.current = null;
-        requestAnimationFrame(() => setCameraKey(prev => prev + 1));
+        remountCamera();
       });
     });
   };
@@ -503,7 +507,7 @@ export default function Index() {
       
       <View style={styles.scanner}>
         {/* Mount camera only when tab is focused to ensure immediate start */}
-        {isFocused && (
+        {isFocused && !modalVisible && (
           <CameraView
             key={cameraKey}
             style={StyleSheet.absoluteFillObject}

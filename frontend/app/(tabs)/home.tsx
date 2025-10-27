@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import * as SecureStore from 'expo-secure-store';
 import { useIsFocused } from '@react-navigation/native';
 
-const BACKEND_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
+const BACKEND_BASE_URL = 'https://storeapp.nicobar.com';
 
 export default function Home() {
   const router = useRouter();
