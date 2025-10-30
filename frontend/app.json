@@ -1,12 +1,11 @@
 {
   "expo": {
-    "name": "Nicobar Analytics",
-    "slug": "qr-post-app",
-    "owner": "ayush.20204049",
-    "version": "1.0.2",
+    "name": "Nicobar Trials",
+    "slug": "nicobar-trials",
+    "version": "1.0.10",
     "orientation": "portrait",
     "icon": "./assets/images/nico_logo_1024.png",
-    "scheme": "qrpostapp",
+    "scheme": "nicobar-trials",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "sdkVersion": "54.0.0",
@@ -16,7 +15,7 @@
       "icon": "./assets/images/nico_logo_1024.png",
       "infoPlist": {
         "NSCameraUsageDescription": "Camera required to scan QR codes and barcodes.",
-        "CFBundleDisplayName": "Nicobar Analytics"
+        "CFBundleDisplayName": "Nicobar Trials"
       }
     },
     "android": {
@@ -26,7 +25,8 @@
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ],
       "package": "com.nicobar.storeapp.dev"
     },
@@ -54,8 +54,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "50c4642d-2b67-4e40-ab19-2cc0cc4738bd"
+        "projectId": "92369ad3-a9ea-4057-83c6-ce487b7df6b3"
       }
-    }
+    },
+    "owner": "mayank_hfn"
   }
 }
