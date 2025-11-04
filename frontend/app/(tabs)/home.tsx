@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import * as SecureStore from 'expo-secure-store';
 import { useIsFocused } from '@react-navigation/native';
 
-const BACKEND_BASE_URL = 'https://storeapp.nicobar.com';
+const BACKEND_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
 
 export default function Home() {
   const router = useRouter();
@@ -82,10 +82,10 @@ export default function Home() {
     })
   ).current;
 
-  const openPreview = async (bundle: any) => {
+  const openPreview = async (bundle: any, index: number) => {
     panY.setValue(140);
     setPreviewOpen(true);
-    setPreviewTitle(bundle?.bundleId ? `Bundle ${String(bundle.bundleId).slice(-6)}` : (bundle?.name || 'Bundle'));
+    setPreviewTitle(`Basket ${index + 1}`);
     setPreviewItems([]);
     setPreviewLoading(true);
     try {
@@ -115,7 +115,7 @@ export default function Home() {
           <Text style={styles.filterChipText}>{days === 1 ? 'Today' : `Last ${days} days`}</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.totalBundlesText}>Total Bundles: {totalBundles}</Text>
+      <Text style={styles.totalBundlesText}>Total Baskets: {totalBundles}</Text>
       {filtered.length === 0 && (
         <Text style={styles.emptyText}>
           No baskets in selected range. Scan products to create baskets.
@@ -170,10 +170,11 @@ export default function Home() {
     });
   };
 
+
   const renderBundle = ({ item, index }: { item: any; index: number }) => (
-    <TouchableOpacity style={styles.bundleCard} activeOpacity={0.85} onPress={() => openPreview(item)}>
+    <TouchableOpacity style={styles.bundleCard} activeOpacity={0.85} onPress={() => openPreview(item,index)}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={styles.bundleName}>{`Bundle ${index + 1}`}</Text>
+        <Text style={styles.bundleName}>{`Basket ${index + 1}`}</Text>
         <View style={{ alignItems: 'flex-end' }}>
           {<Text style={styles.bundleDate}>{toIST(item.scanDate)}</Text>}
           <Text style={styles.bundleCount}>{(item?.items?.length ?? 0)} item{(item?.items?.length ?? 0) === 1 ? '' : 's'}</Text>

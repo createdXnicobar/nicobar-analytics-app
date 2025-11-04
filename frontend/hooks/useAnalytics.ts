@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // Prefer environment variable; fall back to sensible defaults per platform
 // To set: add EXPO_PUBLIC_API_BASE_URL in your env (e.g., .env) pointing to FastAPI base URL
-const API_BASE_URL = 'https://storeapp.nicobar.com';
+const API_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
 
 interface AnalyticsData {
   storeCode: string;

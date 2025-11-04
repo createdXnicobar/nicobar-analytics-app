@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nicobar Trials",
     "slug": "nicobar-trials",
-    "version": "1.0.10",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/nico_logo_1024.png",
     "scheme": "nicobar-trials",
@@ -11,7 +11,7 @@
     "sdkVersion": "54.0.0",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.nicobar.storeapp.dev",
+      "bundleIdentifier": " com.nicobar.storeapp.dev",
       "icon": "./assets/images/nico_logo_1024.png",
       "infoPlist": {
         "NSCameraUsageDescription": "Camera required to scan QR codes and barcodes.",
