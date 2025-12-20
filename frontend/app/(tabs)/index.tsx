@@ -26,7 +26,7 @@ import * as SecureStore from 'expo-secure-store';
 
 
 // Backend base URL
-const BACKEND_BASE_URL = 'https://tcnuitydvx.ap-southeast-2.awsapprunner.com';
+const BACKEND_BASE_URL = 'https://013121ea3861.ngrok-free.app';
 const BACKEND_POST_PATH = "/v1/trials";
 
 // Store code comes from authenticated user profile; falls back to BIN
