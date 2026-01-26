@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator, Pressable, Animated, PanResponder, TextInput, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator, Pressable, Animated, PanResponder, TextInput, Platform, Keyboard, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import * as SecureStore from 'expo-secure-store';
 import { useIsFocused } from '@react-navigation/native';
 import uuid from 'react-native-uuid';
+import { API_BASE_URL as BACKEND_BASE_URL } from '@/constants/env';
 
-const BACKEND_BASE_URL = 'https://013121ea3861.ngrok-free.app';
 const BACKEND_POST_PATH = '/v1/trials';
 const PUBLIC_PRODUCT_API = 'https://bronco.nicobar.com/api/getProductsbySKU?sku=';
 
@@ -118,6 +118,8 @@ export default function Home() {
   const [manualProduct, setManualProduct] = useState<{ sku: string; title?: string; price?: string; image?: string; attributes?: { color?: string; size?: string; material?: string } } | null>(null);
   const manualY = useRef(new Animated.Value(140)).current;
   const keyboardOffset = useRef(new Animated.Value(0)).current;
+  const [keyboardShown, setKeyboardShown] = useState(false);
+  const [keyboardPad, setKeyboardPad] = useState(0);
   const manualPan = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 8,
@@ -132,6 +134,7 @@ export default function Home() {
             setManualShowPreview(false);
             setManualError(null);
             setManualBusy(false);
+            setManualSku('NBI');
           });
         } else {
           Animated.spring(manualY, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
@@ -144,9 +147,19 @@ export default function Home() {
     setManualError(null);
     setManualShowPreview(false);
     setManualProduct(null);
+    setManualSku('NBI');
     setManualOpen(true);
     manualY.setValue(140);
     Animated.timing(manualY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+  };
+
+  const closeManual = () => {
+    setManualOpen(false);
+    setManualProduct(null);
+    setManualShowPreview(false);
+    setManualError(null);
+    setManualBusy(false);
+    setManualSku('NBI');
   };
 
   // Lift the sheet when keyboard is visible so the input is never covered
@@ -155,6 +168,8 @@ export default function Home() {
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const showSub = Keyboard.addListener(showEvt, (e: any) => {
       const height = e?.endCoordinates?.height ?? 0;
+      setKeyboardShown(true);
+      setKeyboardPad(Math.max(0, height - insets.bottom));
       Animated.timing(keyboardOffset, {
         toValue: Math.max(0, height - insets.bottom),
         duration: Platform.OS === 'ios' ? (e?.duration ?? 200) : 200,
@@ -162,6 +177,8 @@ export default function Home() {
       }).start();
     });
     const hideSub = Keyboard.addListener(hideEvt, (e: any) => {
+      setKeyboardShown(false);
+      setKeyboardPad(0);
       Animated.timing(keyboardOffset, {
         toValue: 0,
         duration: Platform.OS === 'ios' ? (e?.duration ?? 200) : 200,
@@ -257,6 +274,7 @@ export default function Home() {
       setManualBusy(false);
       setManualProduct(null);
       setManualShowPreview(false);
+      setManualSku('NBI');
       await fetchBundles();
     } catch (e: any) {
       setManualError(e?.message || 'Failed to submit');
@@ -284,6 +302,20 @@ export default function Home() {
     <View style={styles.header}>
       <Text style={styles.title}>Nicobar Retail</Text>
       <Image source={require('@/assets/images/nico_logo.png')} style={styles.logo} />
+      <View style={[styles.buttonGroup, { marginTop: 8 }]}>
+        <TouchableOpacity
+          style={[styles.btn, styles.scanBtn]}
+          onPress={() => router.push('/scan')}
+        >
+          <Text style={styles.btnText}>📷 Scan a new item</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.btn, styles.manualBtn]}
+          onPress={openManual}
+        >
+          <Text style={styles.btnText}>✍️ Enter NBI code</Text>
+        </TouchableOpacity>
+      </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={styles.sectionTitle}>Your Baskets</Text>
         <TouchableOpacity style={styles.filterChip} onPress={() => setShowFilter(true)}>
@@ -361,26 +393,6 @@ export default function Home() {
     </TouchableOpacity>
   );
 
-  // Footer section (buttons)
-  const renderFooter = () => (
-    <View>
-      <View style={styles.buttonGroup}>
-        <TouchableOpacity
-          style={[styles.btn, styles.scanBtn]}
-          onPress={() => router.push('/scan')}
-        >
-          <Text style={styles.btnText}>📷 Scan a new item</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.btn, styles.manualBtn]}
-          onPress={openManual}
-        >
-          <Text style={styles.btnText}>✍️ Enter NBI code</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
     <FlatList
@@ -388,7 +400,6 @@ export default function Home() {
       keyExtractor={(item, i) => item.id || item.bundleId || String(i)}
       renderItem={renderBundle}
       ListHeaderComponent={renderHeader}
-      ListFooterComponent={renderFooter}
       contentContainerStyle={styles.container}
       refreshing={loadingBundles}
       onRefresh={fetchBundles}
@@ -448,100 +459,112 @@ export default function Home() {
       presentationStyle="overFullScreen"
       hardwareAccelerated
       statusBarTranslucent
-      onRequestClose={() => setManualOpen(false)}
+      onRequestClose={closeManual}
     >
-      <Pressable style={styles.modalBackdrop} onPress={() => setManualOpen(false)}>
+      <Pressable style={styles.modalBackdrop} onPress={closeManual}>
         <Animated.View
-          style={[styles.previewSheet, { transform: [{ translateY: Animated.add(manualY, Animated.multiply(keyboardOffset, -1)) }] }]}
+          style={[styles.previewSheet, { transform: [{ translateY: manualY }] }]}
           onStartShouldSetResponder={() => true}
           {...manualPan.panHandlers}
         >
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Math.max(insets.bottom, 24)}>
+          <View>
             <View style={styles.sheetHandle} />
-            {!manualShowPreview ? (
-              <View>
-                <Text style={styles.previewTitle}>Enter NBI Code</Text>
-                <Text style={{ color: '#6b7280', marginBottom: 8 }}>All codes start with NBI</Text>
-                <TextInput
-                  value={manualSku}
-                  onChangeText={setManualSku}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  placeholder="NBI123456"
-                  placeholderTextColor="#9ca3af"
-                  style={styles.input}
-                  editable={!manualBusy}
-                />
-                {manualError ? <Text style={styles.errorText}>{manualError}</Text> : null}
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                  <TouchableOpacity style={[styles.btnRow, styles.previewBtn]} onPress={handleManualPreview} disabled={manualBusy}>
-                    {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnRowText}>Preview</Text>}
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.btnRow, styles.submitBtn]} onPress={handleManualSubmit} disabled={manualBusy}>
-                    {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnRowText}>Submit</Text>}
-                  </TouchableOpacity>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: (keyboardShown ? keyboardPad : Math.max(insets.bottom, 24)) + 96 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {!manualShowPreview ? (
+                <View>
+                  <Text style={styles.previewTitle}>Enter NBI Code</Text>
+                  <Text style={{ color: '#6b7280', marginBottom: 8 }}>All codes start with NBI</Text>
+                  <TextInput
+                    value={manualSku}
+                    onChangeText={setManualSku}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    placeholder="NBI123456"
+                    placeholderTextColor="#9ca3af"
+                    style={styles.input}
+                    editable={!manualBusy}
+                    autoFocus
+                    returnKeyType="done"
+                  />
+                  {manualError ? <Text style={styles.errorText}>{manualError}</Text> : null}
                 </View>
+              ) : (
+                <View>
+                  <Text style={styles.previewTitle}>Preview</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                    {manualProduct?.image ? (
+                      <Image source={{ uri: manualProduct.image }} style={{ width: 64, height: 96, borderRadius: 8, marginRight: 12 }} />
+                    ) : (
+                      <View style={{ width: 64, height: 96, borderRadius: 8, backgroundColor: '#e5e7eb', marginRight: 12 }} />
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: '800', color: '#111' }}>#{manualProduct?.sku}</Text>
+                      <Text style={{ color: '#374151' }}>{manualProduct?.title || 'Product'}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.detailList}>
+                    {!!manualProduct?.price && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Price</Text>
+                        <Text style={styles.detailValue}>{formatINR(manualProduct.price)}</Text>
+                      </View>
+                    )}
+                    {!!manualProduct?.attributes?.color && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Color</Text>
+                        <Text style={styles.detailValue}>{manualProduct?.attributes?.color}</Text>
+                      </View>
+                    )}
+                    {!!manualProduct?.attributes?.size && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Size</Text>
+                        <Text style={styles.detailValue}>{manualProduct?.attributes?.size}</Text>
+                      </View>
+                    )}
+                    {!!manualProduct?.attributes?.material && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Material</Text>
+                        <Text style={styles.detailValue}>{manualProduct?.attributes?.material}</Text>
+                      </View>
+                    )}
+                  </View>
+                  {manualError ? <Text style={[styles.errorText, { marginTop: 8 }]}>{manualError}</Text> : null}
+                </View>
+              )}
+            </ScrollView>
+            {/* Sticky action bar above keyboard */}
+            {!manualShowPreview ? (
+              <View style={[styles.actionBar, { bottom: (keyboardShown ? keyboardPad : Math.max(insets.bottom, 24)) + 16 }]}>
+                <TouchableOpacity style={[styles.btnRow, styles.previewBtn]} onPress={handleManualPreview} disabled={manualBusy}>
+                  {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnRowText}>Preview</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.btnRow, styles.submitBtn]} onPress={handleManualSubmit} disabled={manualBusy}>
+                  {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnRowText}>Submit</Text>}
+                </TouchableOpacity>
               </View>
             ) : (
-              <View>
-                <Text style={styles.previewTitle}>Preview</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                  {manualProduct?.image ? (
-                    <Image source={{ uri: manualProduct.image }} style={{ width: 64, height: 96, borderRadius: 8, marginRight: 12 }} />
-                  ) : (
-                    <View style={{ width: 64, height: 96, borderRadius: 8, backgroundColor: '#e5e7eb', marginRight: 12 }} />
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: '800', color: '#111' }}>#{manualProduct?.sku}</Text>
-                    <Text style={{ color: '#374151' }}>{manualProduct?.title || 'Product'}</Text>
-                  </View>
-                </View>
-                <View style={styles.detailList}>
-                  {!!manualProduct?.price && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Price</Text>
-                      <Text style={styles.detailValue}>{formatINR(manualProduct.price)}</Text>
-                    </View>
-                  )}
-                  {!!manualProduct?.attributes?.color && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Color</Text>
-                      <Text style={styles.detailValue}>{manualProduct?.attributes?.color}</Text>
-                    </View>
-                  )}
-                  {!!manualProduct?.attributes?.size && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Size</Text>
-                      <Text style={styles.detailValue}>{manualProduct?.attributes?.size}</Text>
-                    </View>
-                  )}
-                  {!!manualProduct?.attributes?.material && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Material</Text>
-                      <Text style={styles.detailValue}>{manualProduct?.attributes?.material}</Text>
-                    </View>
-                  )}
-                </View>
-                {manualError ? <Text style={[styles.errorText, { marginTop: 8 }]}>{manualError}</Text> : null}
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                  <TouchableOpacity
-                    style={[styles.btnRow, styles.cancelBtn]}
-                    onPress={() => { setManualShowPreview(false); setManualProduct(null); }}
-                    disabled={manualBusy}
-                  >
-                    <Text style={[styles.btnRowText]}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btnRow, styles.submitBtn]}
-                    onPress={handleManualSubmit}
-                    disabled={manualBusy}
-                  >
-                    {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnRowText}>Submit</Text>}
-                  </TouchableOpacity>
-                </View>
+              <View style={[styles.actionBar, { bottom: (keyboardShown ? keyboardPad : Math.max(insets.bottom, 24)) + 16 }]}>
+                <TouchableOpacity
+                  style={[styles.btnRow, styles.cancelBtn]}
+                  onPress={() => { setManualShowPreview(false); setManualProduct(null); }}
+                  disabled={manualBusy}
+                >
+                  <Text style={[styles.btnRowText]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.btnRow, styles.submitBtn]}
+                  onPress={handleManualSubmit}
+                  disabled={manualBusy}
+                >
+                  {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnRowText}>Submit</Text>}
+                </TouchableOpacity>
               </View>
             )}
-          </KeyboardAvoidingView>
+          </View>
         </Animated.View>
       </Pressable>
     </Modal>
@@ -633,4 +656,5 @@ const styles = StyleSheet.create({
   previewBtn: { backgroundColor: '#6b7280' },
   submitBtn: { backgroundColor: '#111827' },
   cancelBtn: { backgroundColor: '#9ca3af' },
+  actionBar: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', gap: 8 },
 });
