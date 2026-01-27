@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     PRODUCT_TTL_SEC: int = 24*3600
     STOCK_TTL_SEC: int = 20*60
     ADMIN_TOKEN: str | None = None
+    # Trial→Purchase matching windows (minutes)
+    TRIAL_MATCH_BACKWARD_MINUTES: int = 120  # look-back window before purchase
+    TRIAL_MATCH_FORWARD_MINUTES: int = 60    # look-ahead window after purchase (post-billing scans)
 
     class Config:
         env_file = ".env"

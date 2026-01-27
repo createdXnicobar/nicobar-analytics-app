@@ -45,6 +45,10 @@ MONGODB_URI=mongodb+srv://${MONGO_USER}:${MONGO_PW}@cluster0.dhudqnb.mongodb.net
 DB_NAME=nicobar-analytics-db
 NICOBAR_API_BASE=https://bronco.nicobar.com
 ENV=dev
+# Matching windows (minutes)
+# Look back 2h before purchase, and allow 1h post-purchase scans
+TRIAL_MATCH_BACKWARD_MINUTES=120
+TRIAL_MATCH_FORWARD_MINUTES=0
 ```
 
 ## 3) Run the backend API
@@ -99,6 +103,10 @@ Response Body:
   "linked": 1
 }
 ```
+
+Notes:
+- Matching uses a configurable time window around a purchase. By default it searches 120 minutes before and 0 minutes after. You can enable post-purchase attribution by setting `TRIAL_MATCH_FORWARD_MINUTES` (e.g., `60`).
+- The chosen trial is the closest in time to the purchase; ties prefer pre-purchase.
 ```bash
 curl -i -X POST "http://localhost:8000/v1/jobs/aggregate?date=2025-09-02"
 

@@ -24,7 +24,13 @@ async def _background_match_job(date: str):
     try:
         logger.info(f"Background matching job started for date: {date} [job_id: {job_id}]")
         db = get_db()
-        res = await link_trials_to_purchases_for_date(db, date)
+        # Use configured backward/forward windows
+        res = await link_trials_to_purchases_for_date(
+            db,
+            date,
+            backward_minutes=settings.TRIAL_MATCH_BACKWARD_MINUTES,
+            forward_minutes=settings.TRIAL_MATCH_FORWARD_MINUTES,
+        )
         logger.info(f"Background matching job completed for {date} [job_id: {job_id}]: {res}")
         
         # Store job result for monitoring (optional - store in database if needed)
