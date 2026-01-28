@@ -66,16 +66,18 @@ async def link_trials_to_purchases_for_date(
         }).sort("timestamp", 1).limit(20)
 
         # Collect all candidate trials first to avoid N+1 queries
+        # Also extract and store trial IDs to avoid duplicate extraction logic
         candidates = []
         async for t in candidates_cur:
             trial_id_val = t.get("trialId") or str(t.get("_id"))
             if trial_id_val is None:
                 continue
-            candidates.append(t)
+            # Store trial with its extracted ID for later use
+            candidates.append((t, trial_id_val))
 
         # Batch query: find all already-linked trial IDs in one DB round-trip
         if candidates:
-            candidate_trial_ids = [t.get("trialId") or str(t.get("_id")) for t in candidates]
+            candidate_trial_ids = [trial_id for _, trial_id in candidates]
             linked_trials_cur = db.trial_purchase_links.find(
                 {"trialId": {"$in": candidate_trial_ids}}
             )
@@ -86,8 +88,7 @@ async def link_trials_to_purchases_for_date(
         # Now find the best candidate from the unlinked trials
         best = None
         best_abs_delta = None
-        for t in candidates:
-            trial_id_val = t.get("trialId") or str(t.get("_id"))
+        for t, trial_id_val in candidates:
             # Skip if already linked
             if trial_id_val in linked_trial_ids:
                 continue
