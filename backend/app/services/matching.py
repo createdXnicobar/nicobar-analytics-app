@@ -69,7 +69,12 @@ async def link_trials_to_purchases_for_date(
         # Also extract and store trial IDs to avoid duplicate extraction logic
         candidates = []
         async for t in candidates_cur:
-            trial_id_val = t.get("trialId") or str(t.get("_id"))
+            trial_id_val = t.get("trialId")
+            if trial_id_val is None:
+                trial_id_val = str(t.get("_id")) if t.get("_id") else None
+            else:
+                trial_id_val = str(trial_id_val)
+            
             if trial_id_val is None:
                 continue
             # Store trial with its extracted ID for later use
@@ -81,12 +86,13 @@ async def link_trials_to_purchases_for_date(
             linked_trials_cur = db.trial_purchase_links.find(
                 {"trialId": {"$in": candidate_trial_ids}}
             )
-            linked_trial_ids = {doc["trialId"] async for doc in linked_trials_cur}
+            linked_trial_ids = {str(doc.get("trialId")) async for doc in linked_trials_cur if doc.get("trialId")}
         else:
             linked_trial_ids = set()
 
         # Now find the best candidate from the unlinked trials
         best = None
+        best_trial_id = None
         best_abs_delta = None
         for t, trial_id_val in candidates:
             # Skip if already linked
@@ -98,6 +104,7 @@ async def link_trials_to_purchases_for_date(
 
             if best is None:
                 best = t
+                best_trial_id = trial_id_val
                 best_abs_delta = abs_delta
                 best_delta_min = delta_min
             else:
@@ -106,6 +113,7 @@ async def link_trials_to_purchases_for_date(
                     abs_delta == best_abs_delta and delta_min >= 0 and best_delta_min < 0
                 ):
                     best = t
+                    best_trial_id = trial_id_val
                     best_abs_delta = abs_delta
                     best_delta_min = delta_min
 
@@ -115,12 +123,12 @@ async def link_trials_to_purchases_for_date(
             delta_min = (purchase_ts - best["timestamp"]).total_seconds() / 60.0
             direction = "pre" if delta_min >= 0 else "post"
             logger.debug(
-                f"Linking trial {best.get('trialId')} to purchase {p['orderNo']}-{p['lineNo']} "
+                f"Linking trial {best_trial_id} to purchase {p['orderNo']}-{p['lineNo']} "
                 f"(delta: {delta_min:.1f} minutes, dir: {direction})"
             )
 
             link_doc = {
-                "trialId": best.get("trialId") or str(best["_id"]),
+                "trialId": best_trial_id,
                 "orderNo": p["orderNo"],
                 "lineNo": p["lineNo"],
                 "sku": sku,
