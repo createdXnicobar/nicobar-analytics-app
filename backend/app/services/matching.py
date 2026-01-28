@@ -65,15 +65,31 @@ async def link_trials_to_purchases_for_date(
             "timestamp": {"$gte": window_start, "$lte": window_end}
         }).sort("timestamp", 1).limit(20)
 
-        best = None
-        best_abs_delta = None
+        # Collect all candidate trials first to avoid N+1 queries
+        candidates = []
         async for t in candidates_cur:
-            # ensure trial not already linked to some other purchase
             trial_id_val = t.get("trialId") or str(t.get("_id"))
             if trial_id_val is None:
                 continue
-            already = await db.trial_purchase_links.find_one({"trialId": str(trial_id_val)})
-            if already:
+            candidates.append(t)
+
+        # Batch query: find all already-linked trial IDs in one DB round-trip
+        if candidates:
+            candidate_trial_ids = [t.get("trialId") or str(t.get("_id")) for t in candidates]
+            linked_trials_cur = db.trial_purchase_links.find(
+                {"trialId": {"$in": candidate_trial_ids}}
+            )
+            linked_trial_ids = {doc["trialId"] async for doc in linked_trials_cur}
+        else:
+            linked_trial_ids = set()
+
+        # Now find the best candidate from the unlinked trials
+        best = None
+        best_abs_delta = None
+        for t in candidates:
+            trial_id_val = t.get("trialId") or str(t.get("_id"))
+            # Skip if already linked
+            if trial_id_val in linked_trial_ids:
                 continue
 
             delta_min = (purchase_ts - t["timestamp"]).total_seconds() / 60.0  # can be negative (post-purchase)
