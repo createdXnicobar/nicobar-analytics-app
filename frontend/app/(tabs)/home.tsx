@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator, Pressable, Animated, PanResponder } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Modal, ActivityIndicator, Pressable, Animated, PanResponder, TextInput, Platform, Keyboard, ScrollView } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import * as SecureStore from 'expo-secure-store';
 import { useIsFocused } from '@react-navigation/native';
+import uuid from 'react-native-uuid';
+import { API_BASE_URL as BACKEND_BASE_URL } from '@/constants/env';
 
-const BACKEND_BASE_URL = 'https://storeapp.nicobar.com';
+const BACKEND_POST_PATH = '/v1/trials';
+const PUBLIC_PRODUCT_API = 'https://bronco.nicobar.com/api/getProductsbySKU?sku=';
 
 export default function Home() {
   const router = useRouter();
   const { user } = useAuth();
   const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
   const [showFilter, setShowFilter] = useState(false);
   const [days, setDays] = useState<number>(1);
   const [remoteBundles, setRemoteBundles] = useState<any[]>([]);
@@ -82,10 +86,10 @@ export default function Home() {
     })
   ).current;
 
-  const openPreview = async (bundle: any) => {
+  const openPreview = async (bundle: any, index: number) => {
     panY.setValue(140);
     setPreviewOpen(true);
-    setPreviewTitle(bundle?.bundleId ? `Bundle ${String(bundle.bundleId).slice(-6)}` : (bundle?.name || 'Bundle'));
+    setPreviewTitle(`Basket ${index + 1}`);
     setPreviewItems([]);
     setPreviewLoading(true);
     try {
@@ -105,17 +109,220 @@ export default function Home() {
     animateClose();
   };
 
+  // ----- Manual SKU Entry (bottom sheet) -----
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualSku, setManualSku] = useState<string>('NBI');
+  const [manualBusy, setManualBusy] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const [manualShowPreview, setManualShowPreview] = useState(false);
+  const [manualProduct, setManualProduct] = useState<{ sku: string; title?: string; price?: string; image?: string; attributes?: { color?: string; size?: string; material?: string } } | null>(null);
+  const manualY = useRef(new Animated.Value(140)).current;
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
+  const [keyboardShown, setKeyboardShown] = useState(false);
+  const [keyboardPad, setKeyboardPad] = useState(0);
+  const manualPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 8,
+      onPanResponderMove: (_, g) => {
+        if (g.dy >= 0) manualY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 80) {
+          Animated.timing(manualY, { toValue: 180, duration: 180, useNativeDriver: true }).start(() => {
+            setManualOpen(false);
+            setManualProduct(null);
+            setManualShowPreview(false);
+            setManualError(null);
+            setManualBusy(false);
+            setManualSku('NBI');
+          });
+        } else {
+          Animated.spring(manualY, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
+        }
+      },
+    })
+  ).current;
+
+  const openManual = () => {
+    setManualError(null);
+    setManualShowPreview(false);
+    setManualProduct(null);
+    setManualSku('NBI');
+    setManualOpen(true);
+    manualY.setValue(140);
+    Animated.timing(manualY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+  };
+
+  const closeManual = () => {
+    setManualOpen(false);
+    setManualProduct(null);
+    setManualShowPreview(false);
+    setManualError(null);
+    setManualBusy(false);
+    setManualSku('NBI');
+  };
+
+  // Lift the sheet when keyboard is visible so the input is never covered
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, (e: any) => {
+      const height = e?.endCoordinates?.height ?? 0;
+      setKeyboardShown(true);
+      setKeyboardPad(Math.max(0, height - insets.bottom));
+      Animated.timing(keyboardOffset, {
+        toValue: Math.max(0, height - insets.bottom),
+        duration: Platform.OS === 'ios' ? (e?.duration ?? 200) : 200,
+        useNativeDriver: true,
+      }).start();
+    });
+    const hideSub = Keyboard.addListener(hideEvt, (e: any) => {
+      setKeyboardShown(false);
+      setKeyboardPad(0);
+      Animated.timing(keyboardOffset, {
+        toValue: 0,
+        duration: Platform.OS === 'ios' ? (e?.duration ?? 200) : 200,
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [insets.bottom, keyboardOffset]);
+
+  type NicobarApiResponse = {
+    status?: boolean;
+    data?: {
+      attributes?: { color?: string; size?: string; material?: string };
+      productDetails?: { title?: string; price?: string; images?: string[] };
+    };
+  };
+
+  const formatINR = (value?: string) => {
+    if (!value) return '-';
+    const n = Number(value);
+    if (!isNaN(n)) return `₹${Math.round(n).toLocaleString('en-IN')}`;
+    return value;
+  };
+
+  const fetchProductBySku = async (sku: string) => {
+    const url = `${PUBLIC_PRODUCT_API}${encodeURIComponent(sku)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`GET failed ${res.status}`);
+    const json: NicobarApiResponse = await res.json();
+    if (typeof json?.status === 'boolean' && json.status === false) {
+      throw new Error('Product not found');
+    }
+    const product = {
+      sku,
+      title: json?.data?.productDetails?.title,
+      price: json?.data?.productDetails?.price,
+      image: json?.data?.productDetails?.images?.[0],
+      attributes: {
+        color: json?.data?.attributes?.color,
+        size: json?.data?.attributes?.size,
+        material: json?.data?.attributes?.material,
+      },
+    };
+    return product;
+  };
+
+  const submitSkuAsBasket = async (sku: string) => {
+    const bundleId = String(uuid.v4());
+    const token = await SecureStore.getItemAsync('auth_token');
+    const trial = {
+      sku,
+      storeCode: (user?.storeCode || 'DKN').toUpperCase(),
+      timestamp: new Date().toISOString(),
+      feedback: [],
+      sessionId: null,
+      scannedBy: user?.email || 'app-user',
+      bundleId,
+    };
+    const res = await fetch(`${BACKEND_BASE_URL}${BACKEND_POST_PATH}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Idempotency-Key': `manual_${bundleId}`,
+        'X-Auth-Token': token ?? '',
+      },
+      body: JSON.stringify({ trials: [trial] }),
+    });
+    if (!res.ok) {
+      const status = res.status;
+      const txt = await res.text();
+      console.log('manual submit error', status, txt);
+      if (status === 401 || status === 403) throw new Error('Unauthorized – please sign in again');
+      throw new Error('Submit failed');
+    }
+  };
+
+  const safeSku = (v: string) => (v || '').trim().toUpperCase();
+
+  const handleManualSubmit = async () => {
+    const sku = safeSku(manualSku);
+    if (!sku || sku.length < 3) { setManualError('Enter a valid NBI code'); return; }
+    setManualError(null);
+    setManualBusy(true);
+    try {
+      // Pre-flight: ensure SKU exists
+      await fetchProductBySku(sku);
+      await submitSkuAsBasket(sku);
+      // Close and refresh bundles
+      setManualOpen(false);
+      setManualBusy(false);
+      setManualProduct(null);
+      setManualShowPreview(false);
+      setManualSku('NBI');
+      await fetchBundles();
+    } catch (e: any) {
+      setManualError(e?.message || 'Failed to submit');
+      setManualBusy(false);
+    }
+  };
+
+  const handleManualPreview = async () => {
+    const sku = safeSku(manualSku);
+    if (!sku || sku.length < 3) { setManualError('Enter a valid NBI code'); return; }
+    setManualError(null);
+    setManualBusy(true);
+    try {
+      const p = await fetchProductBySku(sku);
+      setManualProduct(p);
+      setManualShowPreview(true);
+    } catch (e: any) {
+      setManualError(e?.message || 'Failed to fetch product');
+    } finally {
+      setManualBusy(false);
+    }
+  };
+
   const renderHeader = () => (
     <View style={styles.header}>
       <Text style={styles.title}>Nicobar Retail</Text>
       <Image source={require('@/assets/images/nico_logo.png')} style={styles.logo} />
+      <View style={[styles.buttonGroup, { marginTop: 8 }]}>
+        <TouchableOpacity
+          style={[styles.btn, styles.scanBtn]}
+          onPress={() => router.push('/scan')}
+        >
+          <Text style={styles.btnText}>📷 Scan a new item</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.btn, styles.manualBtn]}
+          onPress={openManual}
+        >
+          <Text style={styles.btnText}>✍️ Enter NBI code</Text>
+        </TouchableOpacity>
+      </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={styles.sectionTitle}>Your Baskets</Text>
         <TouchableOpacity style={styles.filterChip} onPress={() => setShowFilter(true)}>
           <Text style={styles.filterChipText}>{days === 1 ? 'Today' : `Last ${days} days`}</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.totalBundlesText}>Total Bundles: {totalBundles}</Text>
+      <Text style={styles.totalBundlesText}>Total Baskets: {totalBundles}</Text>
       {filtered.length === 0 && (
         <Text style={styles.emptyText}>
           No baskets in selected range. Scan products to create baskets.
@@ -170,10 +377,11 @@ export default function Home() {
     });
   };
 
+
   const renderBundle = ({ item, index }: { item: any; index: number }) => (
-    <TouchableOpacity style={styles.bundleCard} activeOpacity={0.85} onPress={() => openPreview(item)}>
+    <TouchableOpacity style={styles.bundleCard} activeOpacity={0.85} onPress={() => openPreview(item,index)}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={styles.bundleName}>{`Bundle ${index + 1}`}</Text>
+        <Text style={styles.bundleName}>{`Basket ${index + 1}`}</Text>
         <View style={{ alignItems: 'flex-end' }}>
           {<Text style={styles.bundleDate}>{toIST(item.scanDate)}</Text>}
           <Text style={styles.bundleCount}>{(item?.items?.length ?? 0)} item{(item?.items?.length ?? 0) === 1 ? '' : 's'}</Text>
@@ -185,20 +393,6 @@ export default function Home() {
     </TouchableOpacity>
   );
 
-  // Footer section (buttons)
-  const renderFooter = () => (
-    <View>
-      <View style={styles.buttonGroup}>
-        <TouchableOpacity
-          style={[styles.btn, styles.scanBtn]}
-          onPress={() => router.push('/scan')}
-        >
-          <Text style={styles.btnText}>📷 Scan a new item</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
     <FlatList
@@ -206,7 +400,6 @@ export default function Home() {
       keyExtractor={(item, i) => item.id || item.bundleId || String(i)}
       renderItem={renderBundle}
       ListHeaderComponent={renderHeader}
-      ListFooterComponent={renderFooter}
       contentContainerStyle={styles.container}
       refreshing={loadingBundles}
       onRefresh={fetchBundles}
@@ -258,6 +451,124 @@ export default function Home() {
       </Pressable>
     </Modal>
     
+    {/* Manual SKU entry modal */}
+    <Modal
+      visible={manualOpen}
+      transparent
+      animationType="none"
+      presentationStyle="overFullScreen"
+      hardwareAccelerated
+      statusBarTranslucent
+      onRequestClose={closeManual}
+    >
+      <Pressable style={styles.modalBackdrop} onPress={closeManual}>
+        <Animated.View
+          style={[styles.previewSheet, { transform: [{ translateY: manualY }] }]}
+          onStartShouldSetResponder={() => true}
+          {...manualPan.panHandlers}
+        >
+          <View>
+            <View style={styles.sheetHandle} />
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: (keyboardShown ? keyboardPad : Math.max(insets.bottom, 24)) + 96 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {!manualShowPreview ? (
+                <View>
+                  <Text style={styles.previewTitle}>Enter NBI Code</Text>
+                  <Text style={{ color: '#6b7280', marginBottom: 8 }}>All codes start with NBI</Text>
+                  <TextInput
+                    value={manualSku}
+                    onChangeText={setManualSku}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    placeholder="NBI123456"
+                    placeholderTextColor="#9ca3af"
+                    style={styles.input}
+                    editable={!manualBusy}
+                    autoFocus
+                    returnKeyType="done"
+                  />
+                  {manualError ? <Text style={styles.errorText}>{manualError}</Text> : null}
+                </View>
+              ) : (
+                <View>
+                  <Text style={styles.previewTitle}>Preview</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                    {manualProduct?.image ? (
+                      <Image source={{ uri: manualProduct.image }} style={{ width: 64, height: 96, borderRadius: 8, marginRight: 12 }} />
+                    ) : (
+                      <View style={{ width: 64, height: 96, borderRadius: 8, backgroundColor: '#e5e7eb', marginRight: 12 }} />
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: '800', color: '#111' }}>#{manualProduct?.sku}</Text>
+                      <Text style={{ color: '#374151' }}>{manualProduct?.title || 'Product'}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.detailList}>
+                    {!!manualProduct?.price && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Price</Text>
+                        <Text style={styles.detailValue}>{formatINR(manualProduct.price)}</Text>
+                      </View>
+                    )}
+                    {!!manualProduct?.attributes?.color && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Color</Text>
+                        <Text style={styles.detailValue}>{manualProduct?.attributes?.color}</Text>
+                      </View>
+                    )}
+                    {!!manualProduct?.attributes?.size && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Size</Text>
+                        <Text style={styles.detailValue}>{manualProduct?.attributes?.size}</Text>
+                      </View>
+                    )}
+                    {!!manualProduct?.attributes?.material && (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Material</Text>
+                        <Text style={styles.detailValue}>{manualProduct?.attributes?.material}</Text>
+                      </View>
+                    )}
+                  </View>
+                  {manualError ? <Text style={[styles.errorText, { marginTop: 8 }]}>{manualError}</Text> : null}
+                </View>
+              )}
+            </ScrollView>
+            {/* Sticky action bar above keyboard */}
+            {!manualShowPreview ? (
+              <View style={[styles.actionBar, { bottom: (keyboardShown ? keyboardPad : Math.max(insets.bottom, 24)) + 16 }]}>
+                <TouchableOpacity style={[styles.btnRow, styles.previewBtn]} onPress={handleManualPreview} disabled={manualBusy}>
+                  {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnRowText}>Preview</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.btnRow, styles.submitBtn]} onPress={handleManualSubmit} disabled={manualBusy}>
+                  {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnRowText}>Submit</Text>}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={[styles.actionBar, { bottom: (keyboardShown ? keyboardPad : Math.max(insets.bottom, 24)) + 16 }]}>
+                <TouchableOpacity
+                  style={[styles.btnRow, styles.cancelBtn]}
+                  onPress={() => { setManualShowPreview(false); setManualProduct(null); }}
+                  disabled={manualBusy}
+                >
+                  <Text style={[styles.btnRowText]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.btnRow, styles.submitBtn]}
+                  onPress={handleManualSubmit}
+                  disabled={manualBusy}
+                >
+                  {manualBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnRowText}>Submit</Text>}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+
     <Modal visible={showFilter} transparent animationType="slide">
       <View style={styles.modalBackdrop}>
         <View style={styles.filterSheet}>
@@ -314,6 +625,7 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontWeight: '700' },
   logout: { backgroundColor: '#ef4444' },
   scanBtn: { backgroundColor: '#111827' },
+  manualBtn: { backgroundColor: '#10b981' },
   demoBtn: { marginTop: 16, backgroundColor: '#3b82f6' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   filterSheet: { backgroundColor: '#fff', padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
@@ -332,4 +644,17 @@ const styles = StyleSheet.create({
   previewImage: { width: 56, height: 56, borderRadius: 8, marginRight: 12 },
   previewSku: { fontWeight: '700', color: '#111' },
   previewName: { color: '#374151' },
+  // Detail list styles (match scanner modal aesthetics)
+  detailList: { backgroundColor: '#f9fafb', borderRadius: 12, paddingVertical: 6, marginTop: 8 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: '#e5e7eb' },
+  detailLabel: { color: '#6b7280', fontWeight: '600', fontSize: 14 },
+  detailValue: { color: '#111827', fontWeight: '600', fontSize: 14 },
+  input: { borderWidth: StyleSheet.hairlineWidth, borderColor: '#d1d5db', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: '#111827', backgroundColor: '#fff' },
+  errorText: { color: '#ef4444', marginTop: 6 },
+  btnRow: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  btnRowText: { color: '#fff', fontWeight: '700' },
+  previewBtn: { backgroundColor: '#6b7280' },
+  submitBtn: { backgroundColor: '#111827' },
+  cancelBtn: { backgroundColor: '#9ca3af' },
+  actionBar: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', gap: 8 },
 });

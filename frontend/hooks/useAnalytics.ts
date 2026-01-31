@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '@/constants/env';
 
-// Prefer environment variable; fall back to sensible defaults per platform
-// To set: add EXPO_PUBLIC_API_BASE_URL in your env (e.g., .env) pointing to FastAPI base URL
-const API_BASE_URL = 'https://storeapp.nicobar.com';
+// Prefer environment variable; fall back to sensible defaults per platform (centralized in constants/env)
 
 interface AnalyticsData {
   storeCode: string;

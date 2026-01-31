@@ -12,6 +12,9 @@
       "distribution": "internal"
     },
     "production": {
+      "android": {
+        "buildType": "apk"
+      },
       "autoIncrement": true
     }
   },
@@ -22,6 +25,7 @@
         "ascAppId": "6754447513",
         "appleTeamId": "GM67H52M9V"
       }
+      
     }
   }
 }

@@ -4,6 +4,7 @@ import {
   Text,
   View,
   Button,
+  TextInput,
   ActivityIndicator,
   Modal,
   Image,
@@ -14,6 +15,7 @@ import {
   PanResponder,
   Easing,
   Platform,
+  Keyboard,
   Dimensions,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,10 +25,10 @@ import { useBundle } from '../../context/BundleContext';
 import { useAuth } from '@/context/AuthContext';
 import { useIsFocused } from "@react-navigation/native";
 import * as SecureStore from 'expo-secure-store';
+import { API_BASE_URL as BACKEND_BASE_URL } from '@/constants/env';
 
 
-// Backend base URL
-const BACKEND_BASE_URL = 'https://storeapp.nicobar.com';
+// Backend base URL comes from shared constant
 const BACKEND_POST_PATH = "/v1/trials";
 
 // Store code comes from authenticated user profile; falls back to BIN
@@ -62,6 +64,7 @@ type ProductPayload = {
   };
   feedback: string[];
   raw?: unknown;
+  notFound?: boolean;
 };
 
 type NicobarApiResponse = {
@@ -111,6 +114,12 @@ export default function Index() {
   
   // Feedback and basket state
   const [selectedFeedbacks, setSelectedFeedbacks] = useState<string[]>([]);
+  const [otherReason, setOtherReason] = useState<string>('');
+  const [showReasonsPicker, setShowReasonsPicker] = useState<boolean>(false);
+  const [tempSelected, setTempSelected] = useState<string[]>([]);
+  const [tempOther, setTempOther] = useState<string>('');
+  const [keyboardShown, setKeyboardShown] = useState<boolean>(false);
+  const [keyboardPad, setKeyboardPad] = useState<number>(0);
   const [currentBasket, setCurrentBasket] = useState<ProductPayload[]>([]);
   const [currentBasketId, setCurrentBasketId] = useState<string | null>(null);
   const { addBasket } = useBundle();
@@ -192,6 +201,25 @@ export default function Index() {
     };
   }, [countdown]);
 
+  // Keyboard padding to keep inputs visible in modal
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, (e: any) => {
+      const h = e?.endCoordinates?.height ?? 0;
+      setKeyboardShown(true);
+      setKeyboardPad(Math.max(0, h - insets.bottom));
+    });
+    const hideSub = Keyboard.addListener(hideEvt, () => {
+      setKeyboardShown(false);
+      setKeyboardPad(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [insets.bottom]);
+
   const isLikelySku = (raw: string): boolean => {
     const s = (raw || "").trim();
     if (!s || s.includes("://") || s.toLowerCase().startsWith("http")) return false;
@@ -225,12 +253,53 @@ export default function Index() {
       const json: NicobarApiResponse = await response.json();
       // Short-circuit if upstream explicitly says status=false (SKU not found)
       if (typeof (json as any)?.status === 'boolean' && (json as any).status === false) {
-        setToast("Product not found");
-        setTimeout(() => setToast(null), 1400);
-        setCanScan(true);
-        lastScanned.current = null;
-        remountCamera();
+        const skuCandidate = (await deriveSku(data)).toUpperCase();
+        if (skuCandidate.startsWith('NBI')) {
+          const payload: ProductPayload = {
+            scannedCode: skuCandidate,
+            codeType: type,
+            feedback: [],
+            notFound: true,
+            raw: json,
+          };
+          // Reset reasons for a fresh product view
+          setSelectedFeedbacks([]);
+          setOtherReason('');
+          setShowReasonsPicker(false);
+          setTempSelected([]);
+          setTempOther('');
+          setProduct(payload);
+          setModalVisible(true);
+        } else {
+          setToast("Product not found");
+          setTimeout(() => setToast(null), 1400);
+          setCanScan(true);
+          lastScanned.current = null;
+          remountCamera();
+        }
         return;
+      }
+      // Fallback as well if API returns OK but no product details
+      const hasDetails = !!json?.data?.productDetails;
+      if (!hasDetails) {
+        const skuCandidate = (await deriveSku(data)).toUpperCase();
+        if (skuCandidate.startsWith('NBI')) {
+          const payload: ProductPayload = {
+            scannedCode: skuCandidate,
+            codeType: type,
+            feedback: [],
+            notFound: true,
+            raw: json,
+          };
+          setSelectedFeedbacks([]);
+          setOtherReason('');
+          setShowReasonsPicker(false);
+          setTempSelected([]);
+          setTempOther('');
+          setProduct(payload);
+          setModalVisible(true);
+          return;
+        }
       }
 
       const payload: ProductPayload = {
@@ -250,8 +319,12 @@ export default function Index() {
         raw: json,
       };
 
-      setProduct(payload);
       setSelectedFeedbacks([]);
+      setOtherReason('');
+      setShowReasonsPicker(false);
+      setTempSelected([]);
+      setTempOther('');
+      setProduct(payload);
       setModalVisible(true);
     } catch (err) {
       const msg = String(err || "error");
@@ -275,6 +348,51 @@ export default function Index() {
       lastScanned.current = null;
     } finally {
       setSending(false);
+    }
+  };
+
+  // Submit a single SKU as a one-item "basket" with a generated bundleId
+  const submitSkuAsOneItemBasket = async (sku: string) => {
+    try {
+      const basketId = String(uuid.v4());
+      const trial = {
+        sku,
+        storeCode: (user?.storeCode || DEFAULT_FALLBACK_STORE).toUpperCase(),
+        timestamp: new Date().toISOString(),
+        feedback: [],
+        sessionId: null,
+        scannedBy: user?.email || "app-user",
+        bundleId: basketId,
+      };
+      const submitUrl = `${BACKEND_BASE_URL}${BACKEND_POST_PATH}`;
+      const token = await SecureStore.getItemAsync('auth_token');
+      const res = await fetch(submitUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Idempotency-Key": `trials_${basketId}`,
+          "X-Auth-Token": token ?? "",
+        },
+        body: JSON.stringify({ trials: [trial] }),
+      });
+      if (!res.ok) {
+        const status = res.status;
+        const errorText = await res.text();
+        console.log("fallback submit error", { status, errorText });
+        throw new Error(status >= 500 ? "Server error – try later" : `Submit failed (${status})`);
+      }
+      setToast("Submitted 1 item");
+      setTimeout(() => setToast(null), 1500);
+      // Reset scanner state
+      setCanScan(true);
+      lastScanned.current = null;
+      remountCamera();
+    } catch (e) {
+      setToast("Submit failed");
+      setTimeout(() => setToast(null), 1500);
+      setCanScan(true);
+      lastScanned.current = null;
+      remountCamera();
     }
   };
 
@@ -368,6 +486,12 @@ export default function Index() {
       }
       // Close the details modal immediately on success
       setModalVisible(false);
+      // Clear reasons selection state after a completed submit
+      setSelectedFeedbacks([]);
+      setOtherReason('');
+      setShowReasonsPicker(false);
+      setTempSelected([]);
+      setTempOther('');
       if (!opts?.silent) {
         setToast("Submitted successfully");
         setTimeout(() => setToast(null), 1500);
@@ -380,6 +504,11 @@ export default function Index() {
     } catch (err) {
       // Always close modal to prevent stuck UI, then show error toast
       setModalVisible(false);
+      setSelectedFeedbacks([]);
+      setOtherReason('');
+      setShowReasonsPicker(false);
+      setTempSelected([]);
+      setTempOther('');
       setToast(String((err as Error)?.message || "Submit failed"));
       setTimeout(() => setToast(null), 1800);
     } finally {
@@ -389,9 +518,10 @@ export default function Index() {
   };
 
   const addToBasket = (productData: ProductPayload) => {
+    const other = (otherReason || '').trim();
     const productWithFeedback = {
       ...productData,
-      feedback: selectedFeedbacks
+      feedback: [...selectedFeedbacks, ...(other ? [`Other: ${other}`] : [])]
     };
     
     if (!currentBasketId) {
@@ -470,6 +600,10 @@ export default function Index() {
         setModalVisible(false);
         setCanScan(true);
         setSelectedFeedbacks([]);
+        setOtherReason('');
+        setShowReasonsPicker(false);
+        setTempSelected([]);
+        setTempOther('');
         lastScanned.current = null;
         remountCamera();
       });
@@ -568,109 +702,180 @@ export default function Index() {
             <ScrollView 
               showsVerticalScrollIndicator={false} 
               style={styles.scrollView}
-              contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) + 24 }}
+              contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) + 24 + (keyboardShown ? keyboardPad : 0) }}
             >
-              <View style={styles.sheetHeader}>
-                {product?.image ? (
-                  <Image source={{ uri: product.image }} style={styles.productImage} resizeMode="cover" />
-                ) : (
-                  <View style={[styles.productImage, { backgroundColor: "#eee" }]} />
-                )}
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.productId}>#{product?.scannedCode ?? ""}</Text>
-                  <Text style={styles.productTitle}>{product?.productTitle ?? "Product"}</Text>
-                </View>
-              </View>
+              {!showReasonsPicker && (
+                <>
+                  <View style={styles.sheetHeader}>
+                    {product?.image ? (
+                      <Image source={{ uri: product.image }} style={styles.productImage} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.productImage, { backgroundColor: "#eee" }]} />
+                    )}
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.productId}>#{product?.scannedCode ?? ""}</Text>
+                      <Text style={styles.productTitle}>{product?.productTitle ?? "Product"}</Text>
+                    </View>
+                  </View>
 
-              <View style={styles.detailList}>
-                {product?.price ? (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Price</Text>
-                    <Text style={styles.detailValue}>{formatINR(product.price)}</Text>
-                  </View>
-                ) : null}
-                {product?.attributes?.color ? (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Color</Text>
-                    <Text style={styles.detailValue}>{product.attributes.color}</Text>
-                  </View>
-                ) : null}
-                {product?.attributes?.size ? (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Size</Text>
-                    <Text style={styles.detailValue}>{product.attributes.size}</Text>
-                  </View>
-                ) : null}
-                {product?.attributes?.material ? (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Material</Text>
-                    <Text style={styles.detailValue}>{product.attributes.material}</Text>
-                  </View>
-                ) : null}
-              </View>
+                  {product?.notFound ? (
+                    <View style={{ paddingVertical: 8 }}>
+                      <Text style={styles.notFoundText}>Product Not Found!</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.detailList}>
+                      {product?.price ? (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Price</Text>
+                          <Text style={styles.detailValue}>{formatINR(product.price)}</Text>
+                        </View>
+                      ) : null}
+                      {product?.attributes?.color ? (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Color</Text>
+                          <Text style={styles.detailValue}>{product.attributes.color}</Text>
+                        </View>
+                      ) : null}
+                      {product?.attributes?.size ? (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Size</Text>
+                          <Text style={styles.detailValue}>{product.attributes.size}</Text>
+                        </View>
+                      ) : null}
+                      {product?.attributes?.material ? (
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>Material</Text>
+                          <Text style={styles.detailValue}>{product.attributes.material}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  )}
+                </>
+              )}
 
               <View style={styles.feedbackSection}>
-                <Text style={styles.feedbackTitle}>Not purchasing? Select reasons:</Text>
-                <View style={styles.feedbackOptions}>
-                  {FEEDBACK_OPTIONS.map(option => (
+                {!showReasonsPicker ? (
+                  <>
+                    <Text style={styles.feedbackTitle}>Reasons</Text>
                     <TouchableOpacity
-                      key={option}
-                      style={[
-                        styles.feedbackOption,
-                        selectedFeedbacks.includes(option) && styles.feedbackOptionSelected
-                      ]}
+                      style={styles.selectReasonsBtn}
                       onPress={() => {
-                        setSelectedFeedbacks(prev =>
-                          prev.includes(option)
-                            ? prev.filter(item => item !== option)
-                            : [...prev, option]
-                        );
+                        setTempSelected(selectedFeedbacks);
+                        setTempOther(otherReason);
+                        setShowReasonsPicker(true);
                       }}
                     >
-                      <Text style={[
-                        styles.feedbackOptionText,
-                        selectedFeedbacks.includes(option) && styles.feedbackOptionTextSelected
-                      ]}>
-                        {option}
-                      </Text>
+                      <Text style={styles.selectReasonsText}>Select reasons</Text>
                     </TouchableOpacity>
-                  ))}
+                    {(selectedFeedbacks.length > 0 || (otherReason || '').trim()) && (
+                      <View style={styles.selectedSummary}>
+                        {selectedFeedbacks.map((r, i) => (
+                          <View key={`${r}-${i}`} style={styles.selectedChip}>
+                            <Text style={styles.selectedChipText}>{r}</Text>
+                          </View>
+                        ))}
+                        {(otherReason || '').trim() ? (
+                          <View style={styles.selectedChip}>
+                            <Text style={styles.selectedChipText}>Other: {(otherReason || '').trim()}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.feedbackTitle}>Select reasons</Text>
+                    <View style={styles.feedbackOptions}>
+                      {FEEDBACK_OPTIONS.map((option, idx) => {
+                        const sel = tempSelected.includes(option);
+                        return (
+                          <TouchableOpacity
+                            key={`${option}-${idx}`}
+                            style={[styles.feedbackOption, sel && styles.feedbackOptionSelected]}
+                            onPress={() => {
+                              setTempSelected(prev =>
+                                prev.includes(option) ? prev.filter(x => x !== option) : [...prev, option]
+                              );
+                            }}
+                          >
+                            <Text style={[styles.feedbackOptionText, sel && styles.feedbackOptionTextSelected]}>
+                              {option}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <View style={styles.otherContainer}>
+                      <Text style={styles.feedbackTitle}>Other (optional)</Text>
+                      <TextInput
+                        value={tempOther}
+                        onChangeText={setTempOther}
+                        placeholder="Type a custom reason..."
+                        placeholderTextColor="#6b7280"
+                        style={styles.otherInput}
+                        returnKeyType="done"
+                      />
+                    </View>
+                    <View style={styles.twoButtonRow}>
+                      <TouchableOpacity
+                        style={[styles.bigButton, styles.retakeButton]}
+                        onPress={() => {
+                          setShowReasonsPicker(false);
+                        }}
+                      >
+                        <Text style={styles.bigButtonText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.bigButton, styles.submitButton]}
+                        onPress={() => {
+                          setSelectedFeedbacks(tempSelected);
+                          setOtherReason(tempOther);
+                          setShowReasonsPicker(false);
+                        }}
+                      >
+                        <Text style={styles.bigButtonText}>Save</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
+
+              {!showReasonsPicker && (
+                <View style={[styles.threeButtonRow]}>
+                  <TouchableOpacity
+                    style={[styles.bigButton, styles.retakeButton]}
+                    onPress={handleModalClose}
+                    disabled={sending}
+                  >
+                    <Text style={styles.bigButtonText}>Retake</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.bigButton, styles.addToBasketButton]}
+                    onPress={() => product && addToBasket(product)}
+                    disabled={sending}
+                  >
+                    <Text style={styles.bigButtonText}>Add to Basket</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.bigButton, styles.submitButton]}
+                    onPress={() => {
+                      if (product) {
+                        const other = (otherReason || '').trim();
+                        const productWithFeedback = {
+                          ...product,
+                          feedback: [...selectedFeedbacks, ...(other ? [`Other: ${other}`] : [])]
+                        };
+                        submitToBackend(productWithFeedback);
+                      }
+                    }}
+                    disabled={sending}
+                  >
+                    <Text style={styles.bigButtonText}>Submit</Text>
+                  </TouchableOpacity>
                 </View>
-              </View>
-
-              <View style={[styles.threeButtonRow]}>
-                <TouchableOpacity
-                  style={[styles.bigButton, styles.retakeButton]}
-                  onPress={handleModalClose}
-                  disabled={sending}
-                >
-                  <Text style={styles.bigButtonText}>Retake</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.bigButton, styles.addToBasketButton]}
-                  onPress={() => product && addToBasket(product)}
-                  disabled={sending}
-                >
-                  <Text style={styles.bigButtonText}>Add to Basket</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.bigButton, styles.submitButton]}
-                  onPress={() => {
-                    if (product) {
-                      const productWithFeedback = {
-                        ...product,
-                        feedback: selectedFeedbacks
-                      };
-                      submitToBackend(productWithFeedback);
-                    }
-                  }}
-                  disabled={sending}
-                >
-                  <Text style={styles.bigButtonText}>Submit</Text>
-                </TouchableOpacity>
-              </View>
+              )}
             </ScrollView>
           </Animated.View>
         </Pressable>
@@ -772,6 +977,7 @@ const styles = StyleSheet.create({
     fontSize: isSmallScreen ? 18 : isLargeScreen ? 22 : 20, 
     fontWeight: "bold" 
   },
+  notFoundText: { color: '#ef4444', fontWeight: '800', fontSize: isSmallScreen ? 14 : isLargeScreen ? 18 : 16 },
   subtitleText: { color: "#333", marginTop: 2 },
   tagRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 8 },
   tag: { backgroundColor: "#f1f1f1", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8, marginBottom: 8 },
@@ -813,6 +1019,15 @@ const styles = StyleSheet.create({
     fontSize: isSmallScreen ? 10 : isLargeScreen ? 14 : 12 
   },
   feedbackOptionTextSelected: { color: '#fff' },
+  // Inline reasons picker and summary styles
+  selectReasonsBtn: { backgroundColor: '#111827', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginTop: 8 },
+  selectReasonsText: { color: '#fff', fontWeight: '700' },
+  selectedSummary: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, gap: 8 },
+  selectedChip: { backgroundColor: '#f3f4f6', borderColor: '#e5e7eb', borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6 },
+  selectedChipText: { color: '#111827', fontWeight: '600' },
+  otherContainer: { marginTop: 12 },
+  otherInput: { borderWidth: StyleSheet.hairlineWidth, borderColor: '#ddd', borderRadius: 10, paddingHorizontal: 12, paddingVertical: isSmallScreen ? 8 : 10, color: '#111', backgroundColor: '#fff' },
+  twoButtonRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, gap: isSmallScreen ? 6 : 8 },
   threeButtonRow: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
