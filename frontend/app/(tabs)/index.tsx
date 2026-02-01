@@ -37,16 +37,65 @@ const DEFAULT_FALLBACK_STORE = "DKN";
 // Public GET API base used when the scanned data is an SKU, not a URL
 const PUBLIC_PRODUCT_API = "https://bronco.nicobar.com/api/getProductsbySKU?sku=";
 
-// Feedback options for non-purchase reasons
-const FEEDBACK_OPTIONS = [
-  "Fit Issue",
-  "Color Issue", 
-  "Fabric Feel",
-  "Defective Item",
-  "Transparency",
-  "Comfort Level",
-  "Price Too High",
-  "Style Not Liked"
+// Grouped feedback options (issues and sub-issues), all multi-select
+const FEEDBACK_GROUPS: Array<{ title: string; items?: string[] }> = [
+  {
+    title: "Size and fit - loose",
+    items: [
+      "Too loose on shoulder",
+      "Too loose on armhole",
+      "Too loose on biceps",
+      "Too loose at sleeves",
+      "Too loose on chest",
+      "Too loose on waist",
+      "Too loose from the hip",
+      "Too loose from the crotch",
+      "Too loose on thigh",
+    ],
+  },
+  {
+    title: "Size and fit - tight",
+    items: [
+      "Too tight on armhole",
+      "Too tight on shoulder",
+      "Too tight on biceps",
+      "Too tight at sleeves",
+      "Too tight on chest",
+      "Too tight on waist",
+      "Too tight from the hip",
+      "Too tight from the crotch",
+      "Too tight on thigh",
+    ],
+  },
+  { title: "Style did not like" },
+  {
+    title: "Defective product",
+    items: [
+      "Colour bleed",
+      "Poor material finish",
+      "Product looks old",
+      "Buttons missing",
+      "Stitch Issue",
+    ],
+  },
+  {
+    title: "Price too high",
+    items: [
+      "Better price elsewhere",
+      "Price-fabric mismatch",
+      "Value doesnt justify price",
+    ],
+  },
+  { title: "Transparency" },
+  {
+    title: "Color issue",
+    items: [
+      "Doesn’t suit skin tone",
+      "Fade concern",
+      "Prints didn't suit",
+    ],
+  },
+  { title: "Fabric feel" },
 ];
 
 type ProductPayload = {
@@ -696,13 +745,18 @@ export default function Index() {
         onShow={openSheet}
         onRequestClose={handleModalClose}
       >
-        <Pressable style={styles.modalBackdrop} onPress={handleModalClose}>
-          <Animated.View style={[styles.sheet, { transform: [{ translateY: Animated.add(sheetY, dragY) }] }]}>
+        <View style={styles.modalBackdrop}>
+          {/* Backdrop only - closes when tapping outside the sheet */}
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={handleModalClose} />
+          <Animated.View
+            style={[styles.sheet, { transform: [{ translateY: Animated.add(sheetY, dragY) }] }]}
+          >
             <View style={styles.sheetHandle} {...panHandlers.panHandlers} />
             <ScrollView 
               showsVerticalScrollIndicator={false} 
               style={styles.scrollView}
               contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) + 24 + (keyboardShown ? keyboardPad : 0) }}
+              keyboardShouldPersistTaps="handled"
             >
               {!showReasonsPicker && (
                 <>
@@ -785,26 +839,57 @@ export default function Index() {
                 ) : (
                   <>
                     <Text style={styles.feedbackTitle}>Select reasons</Text>
-                    <View style={styles.feedbackOptions}>
-                      {FEEDBACK_OPTIONS.map((option, idx) => {
-                        const sel = tempSelected.includes(option);
-                        return (
+                    {FEEDBACK_GROUPS.map((group, gi) => (
+                      <View key={`${group.title}-${gi}`} style={{ marginBottom: 10 }}>
+                        <Text style={styles.groupHeader}>{group.title}</Text>
+                        <View style={styles.feedbackOptions}>
                           <TouchableOpacity
-                            key={`${option}-${idx}`}
-                            style={[styles.feedbackOption, sel && styles.feedbackOptionSelected]}
+                            key={`${group.title}-parent`}
+                            style={[
+                              styles.feedbackOption,
+                              tempSelected.includes(group.title) && styles.feedbackOptionSelected
+                            ]}
                             onPress={() => {
                               setTempSelected(prev =>
-                                prev.includes(option) ? prev.filter(x => x !== option) : [...prev, option]
+                                prev.includes(group.title)
+                                  ? prev.filter(x => x !== group.title)
+                                  : [...prev, group.title]
                               );
                             }}
                           >
-                            <Text style={[styles.feedbackOptionText, sel && styles.feedbackOptionTextSelected]}>
-                              {option}
+                            <Text
+                              style={[
+                                styles.feedbackOptionText,
+                                tempSelected.includes(group.title) && styles.feedbackOptionTextSelected
+                              ]}
+                            >
+                              {group.title}
                             </Text>
                           </TouchableOpacity>
-                        );
-                      })}
-                    </View>
+                          {(group.items || []).map((sub, si) => {
+                            const label = `${group.title} - ${sub}`;
+                            const sel = tempSelected.includes(label);
+                            return (
+                              <TouchableOpacity
+                                key={`${group.title}-${sub}-${si}`}
+                                style={[styles.feedbackOption, sel && styles.feedbackOptionSelected]}
+                                onPress={() => {
+                                  setTempSelected(prev =>
+                                    prev.includes(label)
+                                      ? prev.filter(x => x !== label)
+                                      : [...prev, label]
+                                  );
+                                }}
+                              >
+                                <Text style={[styles.feedbackOptionText, sel && styles.feedbackOptionTextSelected]}>
+                                  {sub}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    ))}
                     <View style={styles.otherContainer}>
                       <Text style={styles.feedbackTitle}>Other (optional)</Text>
                       <TextInput
@@ -878,7 +963,7 @@ export default function Index() {
               )}
             </ScrollView>
           </Animated.View>
-        </Pressable>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -1028,6 +1113,7 @@ const styles = StyleSheet.create({
   otherContainer: { marginTop: 12 },
   otherInput: { borderWidth: StyleSheet.hairlineWidth, borderColor: '#ddd', borderRadius: 10, paddingHorizontal: 12, paddingVertical: isSmallScreen ? 8 : 10, color: '#111', backgroundColor: '#fff' },
   twoButtonRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, gap: isSmallScreen ? 6 : 8 },
+  groupHeader: { color: '#111827', fontWeight: '800', marginBottom: 6, fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14 },
   threeButtonRow: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
