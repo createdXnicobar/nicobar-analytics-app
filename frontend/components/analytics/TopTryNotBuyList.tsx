@@ -119,22 +119,22 @@ export default function TopTryNotBuyList({ items }: TopTryNotBuyListProps) {
               <View style={[styles.cardImage, { backgroundColor: '#e5e7eb' }]} />
             )}
             <View style={{ flex: 1 }}>
-              <View style={styles.itemHeader}>
-                <Text style={styles.sku}>SKU: {item.sku}</Text>
+            <View style={styles.itemHeader}>
+              <Text style={styles.sku}>SKU: {item.sku}</Text>
                 <Text style={styles.conversion}>{(item.conversion * 100).toFixed(1)}%</Text>
-              </View>
+            </View>
               <Text style={styles.title}>{item.title ? <Text style={styles.title}>{item.title}</Text> : null}</Text>
               <Text></Text>
-              {(item.color || item.size) && (
-                <Text style={styles.details}>
-                  {item.color} {item.size}
-                </Text>
-              )}
-              <View style={styles.stats}>
-                <Text style={styles.stat}>Trials: {item.trials}</Text>
-                <Text style={styles.stat}>Purchases: {item.purchases}</Text>
-              </View>
+            {(item.color || item.size) && (
+              <Text style={styles.details}>
+                {item.color} {item.size}
+              </Text>
+            )}
+            <View style={styles.stats}>
+              <Text style={styles.stat}>Trials: {item.trials}</Text>
+              <Text style={styles.stat}>Purchases: {item.purchases}</Text>
             </View>
+          </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
