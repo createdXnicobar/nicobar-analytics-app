@@ -774,7 +774,7 @@ export default function Index() {
 
                   {product?.notFound ? (
                     <View style={{ paddingVertical: 8 }}>
-                      <Text style={styles.notFoundText}>Product Not Found!</Text>
+                      <Text style={styles.notFoundText}>Product Details Not Found!</Text>
                     </View>
                   ) : (
                     <View style={styles.detailList}>
