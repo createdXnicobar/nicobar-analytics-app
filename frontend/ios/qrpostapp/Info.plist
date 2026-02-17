@@ -9,13 +9,13 @@
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleDisplayName</key>
-    <string>Nicobar&#x2007;Trials</string>
+    <string>Nicobar&#x2007;Trials&#x2007;Dev</string>
     <key>CFBundleIdentifier</key>
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Nicobar&#x2007;Trials</string>
+    <string>Nicobar&#x2007;Trials&#x2007;Dev</string>
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
