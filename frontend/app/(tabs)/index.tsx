@@ -165,6 +165,7 @@ export default function Index() {
   const [selectedFeedbacks, setSelectedFeedbacks] = useState<string[]>([]);
   const [otherReason, setOtherReason] = useState<string>('');
   const [showReasonsPicker, setShowReasonsPicker] = useState<boolean>(false);
+  const [openReasonGroup, setOpenReasonGroup] = useState<number | null>(null);
   const [tempSelected, setTempSelected] = useState<string[]>([]);
   const [tempOther, setTempOther] = useState<string>('');
   const [keyboardShown, setKeyboardShown] = useState<boolean>(false);
@@ -768,7 +769,7 @@ export default function Index() {
                     )}
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={styles.productId}>#{product?.scannedCode ?? ""}</Text>
-                      <Text style={styles.productTitle}>{product?.productTitle ?? "Product"}</Text>
+                      <Text style={styles.productTitle}>{product?.productTitle ?? ""}</Text>
                     </View>
                   </View>
 
@@ -816,6 +817,7 @@ export default function Index() {
                       onPress={() => {
                         setTempSelected(selectedFeedbacks);
                         setTempOther(otherReason);
+                        setOpenReasonGroup(null);
                         setShowReasonsPicker(true);
                       }}
                     >
@@ -841,32 +843,45 @@ export default function Index() {
                     <Text style={styles.feedbackTitle}>Select reasons</Text>
                     {FEEDBACK_GROUPS.map((group, gi) => (
                       <View key={`${group.title}-${gi}`} style={{ marginBottom: 10 }}>
-                        <Text style={styles.groupHeader}>{group.title}</Text>
+                        <TouchableOpacity
+                          style={styles.groupHeaderRow}
+                          onPress={() => {
+                            setOpenReasonGroup(prev => (prev === gi ? null : gi));
+                          }}
+                        >
+                          <Text style={styles.expandIcon}>
+                            {openReasonGroup === gi ? '−' : '+'}
+                          </Text>
+                          <Text style={styles.groupHeader}>{group.title}</Text>
+                        </TouchableOpacity>
                         <View style={styles.feedbackOptions}>
-                          <TouchableOpacity
-                            key={`${group.title}-parent`}
-                            style={[
-                              styles.feedbackOption,
-                              tempSelected.includes(group.title) && styles.feedbackOptionSelected
-                            ]}
-                            onPress={() => {
-                              setTempSelected(prev =>
-                                prev.includes(group.title)
-                                  ? prev.filter(x => x !== group.title)
-                                  : [...prev, group.title]
-                              );
-                            }}
-                          >
-                            <Text
+                          {openReasonGroup === gi && (
+                            <TouchableOpacity
+                              key={`${group.title}-parent`}
                               style={[
-                                styles.feedbackOptionText,
-                                tempSelected.includes(group.title) && styles.feedbackOptionTextSelected
+                                styles.feedbackOption,
+                                tempSelected.includes(group.title) && styles.feedbackOptionSelected
                               ]}
+                              onPress={() => {
+                                setTempSelected(prev =>
+                                  prev.includes(group.title)
+                                    ? prev.filter(x => x !== group.title)
+                                    : [...prev, group.title]
+                                );
+                              }}
                             >
-                              {group.title}
-                            </Text>
-                          </TouchableOpacity>
+                              <Text
+                                style={[
+                                  styles.feedbackOptionText,
+                                  tempSelected.includes(group.title) && styles.feedbackOptionTextSelected
+                                ]}
+                              >
+                                {group.title}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                           {(group.items || []).map((sub, si) => {
+                            if (openReasonGroup !== gi) return null;
                             const label = `${group.title} - ${sub}`;
                             const sel = tempSelected.includes(label);
                             return (
@@ -906,6 +921,7 @@ export default function Index() {
                         style={[styles.bigButton, styles.retakeButton]}
                         onPress={() => {
                           setShowReasonsPicker(false);
+                          setOpenReasonGroup(null);
                         }}
                       >
                         <Text style={styles.bigButtonText}>Cancel</Text>
@@ -916,6 +932,7 @@ export default function Index() {
                           setSelectedFeedbacks(tempSelected);
                           setOtherReason(tempOther);
                           setShowReasonsPicker(false);
+                          setOpenReasonGroup(null);
                         }}
                       >
                         <Text style={styles.bigButtonText}>Save</Text>
@@ -1113,7 +1130,19 @@ const styles = StyleSheet.create({
   otherContainer: { marginTop: 12 },
   otherInput: { borderWidth: StyleSheet.hairlineWidth, borderColor: '#ddd', borderRadius: 10, paddingHorizontal: 12, paddingVertical: isSmallScreen ? 8 : 10, color: '#111', backgroundColor: '#fff' },
   twoButtonRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, gap: isSmallScreen ? 6 : 8 },
-  groupHeader: { color: '#111827', fontWeight: '800', marginBottom: 6, fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14 },
+  groupHeaderRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 8,
+    paddingVertical: 6
+  },
+  expandIcon: { 
+    marginRight: 6, 
+    fontWeight: '800', 
+    color: '#111827', 
+    fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14 
+  },
+  groupHeader: { color: '#111827', fontWeight: '800', fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14 },
   threeButtonRow: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
