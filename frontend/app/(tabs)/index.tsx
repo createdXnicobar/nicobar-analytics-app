@@ -769,7 +769,7 @@ export default function Index() {
                     )}
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={styles.productId}>#{product?.scannedCode ?? ""}</Text>
-                      <Text style={styles.productTitle}>{product?.productTitle ?? "Product"}</Text>
+                      <Text style={styles.productTitle}>{product?.productTitle ?? ""}</Text>
                     </View>
                   </View>
 
@@ -1133,11 +1133,8 @@ const styles = StyleSheet.create({
   groupHeaderRow: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    marginBottom: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: '#e5e7eb'
+    marginBottom: 8,
+    paddingVertical: 6
   },
   expandIcon: { 
     marginRight: 6, 
@@ -1145,11 +1142,7 @@ const styles = StyleSheet.create({
     color: '#111827', 
     fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14 
   },
-  groupHeader: { 
-    color: '#111827', 
-    fontWeight: '800', 
-    fontSize: isSmallScreen ? 14 : isLargeScreen ? 18 : 16 
-  },
+  groupHeader: { color: '#111827', fontWeight: '800', fontSize: isSmallScreen ? 12 : isLargeScreen ? 16 : 14 },
   threeButtonRow: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
