@@ -275,6 +275,7 @@ def main():
                         "bsonType": ["int", "long"]
                     }
                 },
+                "productCategory": {"bsonType": ["string", "null"]},
                 "schemaVersion": {"bsonType": ["int", "null"]}
             },
             "additionalProperties": True

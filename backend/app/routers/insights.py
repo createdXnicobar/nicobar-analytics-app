@@ -23,9 +23,11 @@ async def get_store_insights(
         
         logger.debug(f"Date range: {start_str} to {end_str}")
 
+        # Query insights for the store, date range, and filter for clothing items (Men/Women)
         cur = insights_daily().find({
             "storeCode": storeCode,
-            "date": {"$gte": start_str, "$lte": end_str}   # lexicographic works for YYYY-MM-DD
+            "date": {"$gte": start_str, "$lte": end_str},
+            "productCategory": {"$in": ["Men", "Women"]}
         })
 
         rows = {}
@@ -45,7 +47,7 @@ async def get_store_insights(
             total_trials += doc.get("trials", 0)
             total_purchases += doc.get("purchases", 0)
 
-        logger.debug(f"Processed {doc_count} insights documents for store {storeCode}")
+        logger.debug(f"Processed {doc_count} insights documents for store {storeCode} (filtered for Men/Women clothing only)")
 
         items: list[SkuRow] = []
         for r in rows.values():
@@ -64,7 +66,7 @@ async def get_store_insights(
             "conversion": (total_purchases/total_trials) if total_trials else 0.0
         }
 
-        logger.info(f"Insights fetched for {storeCode}: {len(items)} SKUs, "
+        logger.info(f"Insights fetched for {storeCode}: {len(items)} clothing SKUs (Men/Women), "
                    f"{total_trials} trials, {total_purchases} purchases")
 
         return StoreInsightsResponse(
@@ -72,7 +74,7 @@ async def get_store_insights(
             fromDate=start_str,
             toDate=end_str,
             totals=totals,
-            topTryNotBuy=items[:20]
+            topTryNotBuy=items[:30]
         )
         
     except Exception as e:

@@ -16,6 +16,8 @@ async def build_insights_for_date(db: AsyncIOMotorDatabase, date_str: str):
     # 1) Trials grouped by store+sku (+optional size/color from snapshot)
     trials_map: dict[tuple, int] = Counter()
     reasons_map: dict[tuple, Counter] = defaultdict(Counter)
+    # Track product categories from snapshots
+    product_categories: dict[tuple, str] = {}
 
     trial_count = 0
     cur_t = db.trial_events.find({"timestamp": {"$gte": start_utc, "$lt": end_utc}})
@@ -30,6 +32,12 @@ async def build_insights_for_date(db: AsyncIOMotorDatabase, date_str: str):
         trials_map[key] += 1
         for tag in t.get("feedback", []):
             reasons_map[key][tag] += 1
+        
+        # Capture product category from snapshot
+        category = snap.get("category") or {}
+        product_category = category.get("product_category")
+        if product_category and key not in product_categories:
+            product_categories[key] = product_category
 
     logger.debug(f"Processed {trial_count} trial events")
 
@@ -51,6 +59,12 @@ async def build_insights_for_date(db: AsyncIOMotorDatabase, date_str: str):
         color = snap.get("color")
         key = (store, sku, size, color)
         purchases_map[key] += int(p.get("qty", 1))
+        
+        # Capture product category from snapshot (purchase events might have more recent data)
+        category = snap.get("category") or {}
+        product_category = category.get("product_category")
+        if product_category:
+            product_categories[key] = product_category  # Purchase data takes precedence
 
     logger.debug(f"Processed {purchase_count} purchase events")
 
@@ -98,6 +112,11 @@ async def build_insights_for_date(db: AsyncIOMotorDatabase, date_str: str):
         rc = reasons_map.get(key)
         if rc:
             doc["reasonCounts"] = dict(rc)
+        
+        # Add product category if available
+        product_category = product_categories.get(key)
+        if product_category:
+            doc["productCategory"] = product_category
 
         # two upsert patterns depending on presence of size/color
         if size and color:
